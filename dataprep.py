@@ -5,10 +5,9 @@ from tkinter import Text, Scrollbar, Menu
 from PIL import Image, ImageTk
 from tkinter import filedialog
 
-global img_dir, file_version, dir_exists
+global img_dir, file_version
 img_dir = "./working_img/" # used for initial start up only.
-file_version = "2023.08.21.B"
-dir_exists = True
+file_version = "2023.08.21.C"
 
 class Cell:
     def __init__(self, master, text):
@@ -29,10 +28,12 @@ class ImageTextViewer:
         self.source_directory = img_dir
 
         if not os.path.exists(self.source_directory):
-            dir_exists = False
             self.source_directory = "./"
-        else:
-            dir_exists = True
+
+        self.image_files = []
+        self.current_index = -1
+        self.tag_counts = {}
+        self.load_tags_from_files()
 
         if not self.check_for_image_files(self.source_directory):
             self.source_directory = "./"
@@ -43,19 +44,12 @@ class ImageTextViewer:
             self.max_tag_count = max(self.tag_counts.values())
 
         self.output_directory = self.source_directory
-        self.image_files = []
-        self.current_index = -1
-        self.tag_counts = {}
-        self.load_tags_from_files()
 
         self.slider = ttk.Scale(self.top_frame, from_=0, to=0, orient=tk.HORIZONTAL, length=400, command=self.slider_callback)
         self.slider.pack(fill=tk.X)
 
         self.prev_button = tk.Button(self.top_frame, text="Previous", command=self.load_previous)
         self.prev_button.pack(side=tk.LEFT)
-
-        self.reload_button = tk.Button(self.top_frame, text="Reload Images", command=self.reload_images)
-        self.reload_button.pack(side=tk.LEFT)
 
         self.next_button = tk.Button(self.top_frame, text="Next", command=self.load_next)
         self.next_button.pack(side=tk.LEFT)
@@ -149,6 +143,26 @@ class ImageTextViewer:
             self.load_images()
             self.current_index = -1
             self.load_next()
+
+        self.image_files = []
+        self.current_index = -1
+        self.tag_counts = {}
+        self.load_tags_from_files()
+
+        if not self.check_for_image_files(self.source_directory):
+            self.min_tag_count = 0
+            self.max_tag_count = 1
+        else:
+            self.min_tag_count = min(self.tag_counts.values())
+            self.max_tag_count = max(self.tag_counts.values())
+
+        self.update_tag_dropdown()
+        for cell in self.cells:
+            cell.label.destroy()
+        self.cells.clear()
+        self.load_images()
+        self.load_next()
+
         if self.output_directory != self.source_directory:
             self.select_output_folder_button.config(bg="green")
         else:
@@ -162,11 +176,6 @@ class ImageTextViewer:
             self.select_output_folder_button.config(bg="green")
         else:
             self.select_output_folder_button.config(bg="SystemButtonFace")
-
-    def reload_images(self):
-        self.load_images()
-        if self.image_files:
-            self.load_image_and_text()
 
     def load_images(self):
         self.image_files = [file for file in os.listdir(self.source_directory) if file.lower().endswith(('.jpg', '.png', '.jpeg', '.webp'))]
@@ -235,6 +244,8 @@ class ImageTextViewer:
         popup_menu.add_separator()
         popup_menu.add_command(label="Move Up", command=lambda: self.move_cell_up(cell))
         popup_menu.add_command(label="Move Down", command=lambda: self.move_cell_down(cell))
+        popup_menu.add_command(label="Move to Front", command=lambda: self.move_cell_to_front(cell))
+        popup_menu.add_command(label="Move to Back", command=lambda: self.move_cell_to_back(cell))
         popup_menu.tk_popup(event.x_root, event.y_root)
 
     def move_cell_up(self, cell):
@@ -250,6 +261,16 @@ class ImageTextViewer:
             self.cells.pop(index)
             self.cells.insert(index + 1, cell)
             self.rearrange_cells()
+
+    def move_cell_to_front(self, cell):
+        self.cells.remove(cell)
+        self.cells.insert(0, cell)
+        self.rearrange_cells()
+
+    def move_cell_to_back(self, cell):
+        self.cells.remove(cell)
+        self.cells.append(cell)
+        self.rearrange_cells()
 
     def sort_cells(self):
         self.cells.sort(key=lambda cell: cell.text.lower())
@@ -307,7 +328,7 @@ class ImageTextViewer:
         for idx, cell in enumerate(self.cells):
             row = idx // self.cols
             col = idx % self.cols
-            cell.label.grid(row=row, column=col, padx=5, pady=5)
+            cell.label.grid(row=row, column=col, padx=1, pady=1)
 
     def load_cells(self):
         self.cols = 4
