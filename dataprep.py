@@ -8,7 +8,7 @@ from tkinter import filedialog
 
 global img_dir, file_version
 img_dir = "./working_img/" # used for initial start up only.
-file_version = "2023.08.21.C"
+file_version = "2023.08.21.D"
 
 class Cell:
     def __init__(self, master, text):
@@ -282,7 +282,6 @@ class ImageTextViewer:
     def swap_spaces_underscores_all_cells(self):
         replace = "False"
         for cell in self.cells:
-            print("Here I am.")
             new_text = cell.text
             if replace == "False":
                 if " " in cell.text:
@@ -291,15 +290,11 @@ class ImageTextViewer:
                     replace = "underscores"
                 else:
                     replace = "False"
-            print("replace: ", replace)
             if replace != "False":
-                print("Original:", cell.text)
                 if replace == "space":
                     new_text = cell.text.replace(' ', '_')
-                    print("New_:    ", new_text)
                 else:
                     new_text = cell.text.replace('_', ' ')
-                    print("New :    ", new_text)
 
             cell.text = new_text
             cell.label.config(text=new_text)
