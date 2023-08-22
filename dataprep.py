@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from tkinter import Text, Scrollbar, Menu
+from tkinter import messagebox
 from PIL import Image, ImageTk
 from tkinter import filedialog
 
@@ -35,7 +36,7 @@ class ImageTextViewer:
         self.tag_counts = {}
         self.load_tags_from_files()
 
-        if not self.check_for_image_files(self.source_directory):
+        if self.check_for_image_files(self.source_directory) <= 1:
             self.source_directory = "./"
             self.min_tag_count = 0
             self.max_tag_count = 1
@@ -47,6 +48,9 @@ class ImageTextViewer:
 
         self.slider = ttk.Scale(self.top_frame, from_=0, to=0, orient=tk.HORIZONTAL, length=400, command=self.slider_callback)
         self.slider.pack(fill=tk.X)
+
+        self.help_button = tk.Button(self.top_frame, text="?", command=self.open_help_dialog)
+        self.help_button.pack(side=tk.RIGHT)
 
         self.prev_button = tk.Button(self.top_frame, text="Previous", command=self.load_previous)
         self.prev_button.pack(side=tk.LEFT)
@@ -185,7 +189,7 @@ class ImageTextViewer:
         image_extensions = ('.jpg', '.png', '.jpeg', '.webp')
         files = os.listdir(directory)
         image_files = [file for file in files if file.lower().endswith(image_extensions)]
-        return bool(image_files)
+        return len(image_files)
 
     def load_next(self):
         if self.image_files:
@@ -246,6 +250,9 @@ class ImageTextViewer:
         popup_menu.add_command(label="Move Down", command=lambda: self.move_cell_down(cell))
         popup_menu.add_command(label="Move to Front", command=lambda: self.move_cell_to_front(cell))
         popup_menu.add_command(label="Move to Back", command=lambda: self.move_cell_to_back(cell))
+        popup_menu.add_separator()
+        popup_menu.add_command(label="Swap Spaces and Underscores", command=lambda: self.swap_spaces_underscores_all_cells())
+        popup_menu.add_command(label="Change Case", command=lambda: self.change_case_all_cells(cell))
         popup_menu.tk_popup(event.x_root, event.y_root)
 
     def move_cell_up(self, cell):
@@ -271,6 +278,43 @@ class ImageTextViewer:
         self.cells.remove(cell)
         self.cells.append(cell)
         self.rearrange_cells()
+
+    def swap_spaces_underscores_all_cells(self):
+        replace = "False"
+        for cell in self.cells:
+            print("Here I am.")
+            new_text = cell.text
+            if replace == "False":
+                if " " in cell.text:
+                    replace = "space"
+                elif "_" in cell.text:
+                    replace = "underscores"
+                else:
+                    replace = "False"
+            print("replace: ", replace)
+            if replace != "False":
+                print("Original:", cell.text)
+                if replace == "space":
+                    new_text = cell.text.replace(' ', '_')
+                    print("New_:    ", new_text)
+                else:
+                    new_text = cell.text.replace('_', ' ')
+                    print("New :    ", new_text)
+
+            cell.text = new_text
+            cell.label.config(text=new_text)
+
+    def change_case_all_cells(self, cell):
+        first_cell_text = self.cells[0].text
+        if first_cell_text.islower():
+            change_function = str.title
+        else:
+            change_function = str.lower
+
+        for cell in self.cells:
+            new_text = change_function(cell.text)
+            cell.text = new_text
+            cell.label.config(text=new_text)
 
     def sort_cells(self):
         self.cells.sort(key=lambda cell: cell.text.lower())
@@ -370,6 +414,28 @@ class ImageTextViewer:
         self.tag_dropdown['values'] = tag_with_count
 
         self.tag_dropdown.bind("<Return>", lambda event: self.add_tag_from_dropdown())
+
+    def open_help_dialog(self):
+        help_image_path = "help.webp"
+        if os.path.exists(help_image_path):
+            help_image = Image.open(help_image_path)
+            help_image.thumbnail((800, 600))  # Resize the image if needed
+            help_image = ImageTk.PhotoImage(help_image)
+
+            help_message = tk.Toplevel(self.root)
+            help_message.title("Help")
+
+            help_label = tk.Label(help_message, image=help_image)
+            help_label.image = help_image
+            help_label.pack()
+
+            ok_button = tk.Button(help_message, text="OK", command=help_message.destroy)
+            ok_button.pack()
+        else:
+            messagebox.showerror("Error", "Help image not found!")
+
+        # Create a simple dialog with the example text
+        tkinter.simpledialog.messagebox.showinfo("Help", example_text)
 
 if __name__ == "__main__":
     root = tk.Tk()
