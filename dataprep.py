@@ -5,9 +5,10 @@ from tkinter import Text, Scrollbar, Menu
 from PIL import Image, ImageTk
 from tkinter import filedialog
 
-global img_dir, file_version
-img_dir = "./working_img/" # Change this to your image directory
-file_version = "2023.08.21.A"
+global img_dir, file_version, dir_exists
+img_dir = "./working_img/" # used for initial start up only.
+file_version = "2023.08.21.B"
+dir_exists = True
 
 class Cell:
     def __init__(self, master, text):
@@ -25,13 +26,27 @@ class ImageTextViewer:
         self.top_frame = tk.Frame(root, relief="solid")
         self.top_frame.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
 
-        self.directory = img_dir
+        self.source_directory = img_dir
+
+        if not os.path.exists(self.source_directory):
+            dir_exists = False
+            self.source_directory = "./"
+        else:
+            dir_exists = True
+
+        if not self.check_for_image_files(self.source_directory):
+            self.source_directory = "./"
+            self.min_tag_count = 0
+            self.max_tag_count = 1
+        else:
+            self.min_tag_count = min(self.tag_counts.values())
+            self.max_tag_count = max(self.tag_counts.values())
+
+        self.output_directory = self.source_directory
         self.image_files = []
         self.current_index = -1
         self.tag_counts = {}
         self.load_tags_from_files()
-        self.min_tag_count = min(self.tag_counts.values())
-        self.max_tag_count = max(self.tag_counts.values())
 
         self.slider = ttk.Scale(self.top_frame, from_=0, to=0, orient=tk.HORIZONTAL, length=400, command=self.slider_callback)
         self.slider.pack(fill=tk.X)
@@ -45,8 +60,11 @@ class ImageTextViewer:
         self.next_button = tk.Button(self.top_frame, text="Next", command=self.load_next)
         self.next_button.pack(side=tk.LEFT)
 
-        self.select_folder_button = tk.Button(self.top_frame, text="Select Folder", command=self.select_folder)
-        self.select_folder_button.pack(side=tk.RIGHT)
+        self.select_source_folder_button = tk.Button(self.top_frame, text="Select Source Folder", command=self.select_source_folder)
+        self.select_source_folder_button.pack(side=tk.RIGHT)
+
+        self.select_output_folder_button = tk.Button(self.top_frame, text="Select Output Folder", command=self.select_output_folder)
+        self.select_output_folder_button.pack(side=tk.RIGHT)
 
         self.save_button = tk.Button(self.top_frame, text="Save TXT File", command=self.save_text)
         self.save_button.pack(side=tk.RIGHT)
@@ -96,7 +114,7 @@ class ImageTextViewer:
 
     def add_tag_from_dropdown(self):
         selected_tag = self.tag_var.get()
-        selected_tag = selected_tag.lstrip('0123456789 -')
+        selected_tag = selected_tag.rsplit(" - ")[-1]
 
         selected_tags = selected_tag.split(',')
         for selected_tag in selected_tags:
@@ -106,22 +124,44 @@ class ImageTextViewer:
 
     def save_text(self):
         if self.image_files and 0 <= self.current_index < len(self.image_files):
-            txt_filename = os.path.splitext(self.image_files[self.current_index])[0] + ".txt"
-            txt_path = os.path.join(self.directory, txt_filename)
+            image_filename = self.image_files[self.current_index]
+            txt_filename = os.path.splitext(image_filename)[0] + ".txt"
+
+            image_path = os.path.join(self.source_directory, image_filename)
+            txt_path = os.path.join(self.source_directory, txt_filename)
+
+            new_image_path = os.path.join(self.output_directory, image_filename)
+            new_txt_path = os.path.join(self.output_directory, txt_filename)
 
             tags = [cell.text for cell in self.cells]
             image_text = ", ".join(tags)
 
-            with open(txt_path, 'w') as txt_file:
+            with open(new_txt_path, 'w') as txt_file:
                 txt_file.write(image_text)
 
-    def select_folder(self):
+            if not os.path.exists(new_image_path): #Checks to see if this file name exists.
+                os.rename(image_path, new_image_path) #This will not overwrite an existing image
+
+    def select_source_folder(self):
         selected_folder = filedialog.askdirectory()
         if selected_folder:
-            self.directory = selected_folder
+            self.source_directory = selected_folder
             self.load_images()
             self.current_index = -1
             self.load_next()
+        if self.output_directory != self.source_directory:
+            self.select_output_folder_button.config(bg="green")
+        else:
+            self.select_output_folder_button.config(bg="SystemButtonFace")
+
+    def select_output_folder(self):
+        selected_output_folder = filedialog.askdirectory()
+        if selected_output_folder:
+            self.output_directory = selected_output_folder
+        if self.output_directory != self.source_directory:
+            self.select_output_folder_button.config(bg="green")
+        else:
+            self.select_output_folder_button.config(bg="SystemButtonFace")
 
     def reload_images(self):
         self.load_images()
@@ -129,8 +169,14 @@ class ImageTextViewer:
             self.load_image_and_text()
 
     def load_images(self):
-        self.image_files = [file for file in os.listdir(self.directory) if file.lower().endswith(('.jpg', '.png', '.jpeg', '.webp'))]
+        self.image_files = [file for file in os.listdir(self.source_directory) if file.lower().endswith(('.jpg', '.png', '.jpeg', '.webp'))]
         self.slider.config(to=len(self.image_files) - 1)
+
+    def check_for_image_files(self, directory):
+        image_extensions = ('.jpg', '.png', '.jpeg', '.webp')
+        files = os.listdir(directory)
+        image_files = [file for file in files if file.lower().endswith(image_extensions)]
+        return bool(image_files)
 
     def load_next(self):
         if self.image_files:
@@ -156,9 +202,9 @@ class ImageTextViewer:
         if self.image_files:
             image_filename = self.image_files[self.current_index]
             self.image_name_label.config(text="Image: " + image_filename)
-            image_path = os.path.join(self.directory, image_filename)
+            image_path = os.path.join(self.source_directory, image_filename)
             txt_filename = os.path.splitext(image_filename)[0] + ".txt"
-            txt_path = os.path.join(self.directory, txt_filename)
+            txt_path = os.path.join(self.source_directory, txt_filename)
 
             if os.path.exists(txt_path):
                 with open(txt_path, 'r') as txt_file:
@@ -271,7 +317,7 @@ class ImageTextViewer:
 
         if self.image_files:
             txt_filename = os.path.splitext(self.image_files[self.current_index])[0] + ".txt"
-            txt_path = os.path.join(self.directory, txt_filename)
+            txt_path = os.path.join(self.source_directory, txt_filename)
 
             if os.path.exists(txt_path):
                 with open(txt_path, 'r') as txt_file:
@@ -284,9 +330,9 @@ class ImageTextViewer:
                                 self.add_cell(item.strip())
 
     def load_tags_from_files(self):
-        for txt_filename in os.listdir(self.directory):
+        for txt_filename in os.listdir(self.source_directory):
             if txt_filename.lower().endswith('.txt'):
-                txt_path = os.path.join(self.directory, txt_filename)
+                txt_path = os.path.join(self.source_directory, txt_filename)
                 with open(txt_path, 'r') as txt_file:
                     tags = txt_file.read().split(',')
                     for tag in tags:
