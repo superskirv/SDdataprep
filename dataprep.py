@@ -1,14 +1,11 @@
 import os
 import tkinter as tk
-from tkinter import ttk
-from tkinter import Text, Scrollbar, Menu
-from tkinter import messagebox
+from tkinter import ttk, Canvas, Text, Scrollbar, Menu, messagebox, filedialog
 from PIL import Image, ImageTk
-from tkinter import filedialog
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.08.24.A"
+file_version = "2023.08.24.B"
 
 class Cell:
     def __init__(self, master, text):
@@ -23,7 +20,8 @@ class ImageTextViewer:
         self.root.title("Image Text Viewer " + file_version)
 
         self.options = {
-            "clean_tags": True
+            "clean_tags": True,
+            "tag_columns": 4
         }
 
         self.root.pack_propagate(False)
@@ -112,9 +110,25 @@ class ImageTextViewer:
         self.bottom_tag_frame = tk.Frame(self.text_frame, relief="solid")
         self.bottom_tag_frame.pack(padx=0, pady=0, fill=tk.BOTH, expand=True)
 
+        self.bottom_tag_canvas = Canvas(self.bottom_tag_frame)
+        self.bottom_tag_scrollbar = Scrollbar(self.bottom_tag_frame, orient="vertical", command=self.bottom_tag_canvas.yview)
+        self.bottom_tag_canvas.configure(yscrollcommand=self.bottom_tag_scrollbar.set)
+
+        self.bottom_tag_canvas.pack(side="left", fill="both", expand=True)
+        self.bottom_tag_scrollbar.pack(side="right", fill="y")
+
+        self.tag_frame = tk.Frame(self.bottom_tag_canvas)
+        self.tag_frame.pack(fill="both", expand=True)
+
+        self.bottom_tag_canvas.create_window((0, 0), window=self.tag_frame, anchor="nw")
+        self.tag_frame.bind("<Configure>", self.on_tag_frame_configure)
+
         self.cells = []
         self.load_images()
         self.load_next()
+
+    def on_tag_frame_configure(self, event):
+        self.bottom_tag_canvas.configure(scrollregion=self.bottom_tag_canvas.bbox("all"))
 
     def handle_left_click(self, event, cell):
         if event.state & 0x4:  # Check if Ctrl is held
@@ -389,12 +403,11 @@ class ImageTextViewer:
 
     def add_cell(self, text):
         if not self.tag_exists_in_cells(text):
-            new_cell = Cell(self.bottom_tag_frame, text)
+            new_cell = Cell(self.tag_frame, text)
             new_cell.label = tk.Label(new_cell.master, text=text, relief="solid", borderwidth=1)
 
             tag_frequency = self.tag_counts.get(text, 0)
             color = self.calculate_color(tag_frequency)
-
             new_cell.label.config(bg=color, fg="black")
 
             new_cell.label.grid(row=len(self.cells) // self.cols, column=len(self.cells) % self.cols, padx=2, pady=2)
@@ -455,7 +468,7 @@ class ImageTextViewer:
             cell.label.grid(row=row, column=col, padx=1, pady=1)
 
     def load_cells(self):
-        self.cols = 4
+        self.cols = self.options["tag_columns"]
         for cell in self.cells:
             cell.label.destroy()
         self.cells.clear()
