@@ -426,14 +426,22 @@ class ImageTextViewer:
         color_code = "#{:02X}{:02X}{:02X}".format(red, green, blue)
         return color_code
 
-    def delete_cell(self, cell):
-        confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete this cell?")
-        if confirm:
-            cell.label.destroy()
-            self.cells.remove(cell)
-            self.rearrange_cells()
+    def delete_cell(self, this_cell):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if selected_cells:
+            confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete these cell?")
+            if confirm:
+                for cell in selected_cells:
+                    cell.label.destroy()
+                    self.cells.remove(cell)
+        else:
+            confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete this cell?")
+            if confirm:
+                this_cell.label.destroy()
+                self.cells.remove(this_cell)
+        self.rearrange_cells()
 
-    def delete_cell_all(self):
+    def delete_cell_all(self, cell):
         confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete all cells?")
         if confirm:
             for cell in self.cells:
