@@ -168,6 +168,14 @@ class ImageTextViewer:
             if selected_tag and not self.tag_exists_in_cells(selected_tag):
                 self.add_cell(selected_tag)
 
+                # Update tag_counts dictionary
+                if selected_tag in self.tag_counts:
+                    self.tag_counts[selected_tag] += 1
+                else:
+                    self.tag_counts[selected_tag] = 1
+
+        self.update_tag_dropdown()
+
     def save_text(self):
         if self.image_files and 0 <= self.current_index < len(self.image_files):
             image_filename = self.image_files[self.current_index]
