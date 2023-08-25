@@ -7,19 +7,24 @@ from PIL import Image, ImageTk
 from tkinter import filedialog
 
 global img_dir, file_version
-img_dir = "./working_img/" # used for initial start up only.
-file_version = "2023.08.21.D"
+img_dir = "./working_dir/" # used for initial start up only.
+file_version = "2023.08.24.A"
 
 class Cell:
     def __init__(self, master, text):
         self.master = master
         self.text = text
         self.label = None
+        self.selected = False
 
 class ImageTextViewer:
     def __init__(self, root):
         self.root = root
         self.root.title("Image Text Viewer " + file_version)
+
+        self.options = {
+            "clean_tags": True
+        }
 
         self.root.pack_propagate(False)
 
@@ -35,6 +40,7 @@ class ImageTextViewer:
         self.current_index = -1
         self.tag_counts = {}
         self.load_tags_from_files()
+        self.current_selected_cell = None
 
         if self.check_for_image_files(self.source_directory) <= 1:
             self.source_directory = "./"
@@ -110,6 +116,34 @@ class ImageTextViewer:
         self.load_images()
         self.load_next()
 
+    def handle_left_click(self, event, cell):
+        if event.state & 0x4:  # Check if Ctrl is held
+            if cell.selected:
+                cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
+                cell.selected = False
+            else:
+                cell.label.config(relief="solid", borderwidth=2, bg="yellow")
+                cell.selected = True
+            self.current_selected_cell = cell  # Update the current_selected_cell attribute
+        else:
+            self.select_cell(cell)
+
+    def handle_right_click(self, event, cell):
+        self.show_popup(event, cell)
+
+    def select_cell(self, cell):
+        if not cell.selected:
+            for other_cell in self.cells:
+                if other_cell.selected:
+                    other_cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[other_cell.text]))
+                    other_cell.selected = False
+            cell.label.config(relief="solid", borderwidth=2, bg="yellow")
+            cell.selected = True
+            self.current_selected_cell = cell  # Update the current_selected_cell attribute
+        else:
+            cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
+            cell.selected = False
+
     def add_tag_from_dropdown(self):
         selected_tag = self.tag_var.get()
         selected_tag = selected_tag.rsplit(" - ")[-1]
@@ -137,8 +171,9 @@ class ImageTextViewer:
             with open(new_txt_path, 'w') as txt_file:
                 txt_file.write(image_text)
 
-            if not os.path.exists(new_image_path): #Checks to see if this file name exists.
-                os.rename(image_path, new_image_path) #This will not overwrite an existing image
+            with open(image_path, 'rb') as src_image_file:
+                with open(new_image_path, 'wb') as dest_image_file:
+                    dest_image_file.write(src_image_file.read())
 
     def select_source_folder(self):
         selected_folder = filedialog.askdirectory()
@@ -245,6 +280,7 @@ class ImageTextViewer:
     def show_popup(self, event, cell):
         popup_menu = Menu(self.bottom_tag_frame, tearoff=0)
         popup_menu.add_command(label="Delete", command=lambda: self.delete_cell(cell))
+        popup_menu.add_command(label="Delete All", command=lambda: self.delete_cell_all(cell))
         popup_menu.add_separator()
         popup_menu.add_command(label="Move Up", command=lambda: self.move_cell_up(cell))
         popup_menu.add_command(label="Move Down", command=lambda: self.move_cell_down(cell))
@@ -255,28 +291,59 @@ class ImageTextViewer:
         popup_menu.add_command(label="Change Case", command=lambda: self.change_case_all_cells(cell))
         popup_menu.tk_popup(event.x_root, event.y_root)
 
-    def move_cell_up(self, cell):
-        index = self.cells.index(cell)
-        if index > 0:
-            self.cells.pop(index)
-            self.cells.insert(index - 1, cell)
-            self.rearrange_cells()
-
-    def move_cell_down(self, cell):
-        index = self.cells.index(cell)
-        if index < len(self.cells) - 1:
-            self.cells.pop(index)
-            self.cells.insert(index + 1, cell)
-            self.rearrange_cells()
-
-    def move_cell_to_front(self, cell):
-        self.cells.remove(cell)
-        self.cells.insert(0, cell)
+    def move_cell_up(self, this_cell):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if selected_cells:
+            for cell in selected_cells:
+                index = self.cells.index(cell)
+                if index > 0:
+                    self.cells.pop(index)
+                    self.cells.insert(index - 1, cell)
+        else:
+            index = self.cells.index(this_cell)
+            if index > 0:
+                index = self.cells.index(this_cell)
+                self.cells.pop(index)
+                self.cells.insert(index - 1, this_cell)
         self.rearrange_cells()
 
-    def move_cell_to_back(self, cell):
-        self.cells.remove(cell)
-        self.cells.append(cell)
+    def move_cell_down(self, this_cell):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if selected_cells:
+            for cell in selected_cells:
+                index = self.cells.index(cell)
+                if index < len(self.cells) - (1):
+                    self.cells.pop(index)
+                    self.cells.insert(index + (1), cell)
+        else:
+            index = self.cells.index(this_cell)
+            if index < len(self.cells) - 1:
+                self.cells.pop(index)
+                self.cells.insert(index + 1, this_cell)
+        self.rearrange_cells()
+
+    def move_cell_to_front(self, this_cell):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        mov_cnt = 0
+        if selected_cells:
+            for cell in selected_cells:
+                self.cells.remove(cell)
+                self.cells.insert(mov_cnt, cell)
+                mov_cnt = mov_cnt + 1
+        else:
+            self.cells.remove(this_cell)
+            self.cells.insert(0, this_cell)
+        self.rearrange_cells()
+
+    def move_cell_to_back(self, this_cell):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if selected_cells:
+            for cell in selected_cells:
+                self.cells.remove(cell)
+                self.cells.append(cell)
+        else:
+            self.cells.remove(this_cell)
+            self.cells.append(this_cell)
         self.rearrange_cells()
 
     def swap_spaces_underscores_all_cells(self):
@@ -330,8 +397,9 @@ class ImageTextViewer:
 
             new_cell.label.config(bg=color, fg="black")
 
-            new_cell.label.grid(row=len(self.cells) // self.cols, column=len(self.cells) % self.cols, padx=2, pady=2)  # Adjust padding values here
-            new_cell.label.bind("<Button-3>", lambda event, cell=new_cell: self.show_popup(event, cell))
+            new_cell.label.grid(row=len(self.cells) // self.cols, column=len(self.cells) % self.cols, padx=2, pady=2)
+            new_cell.label.bind("<Button-1>", lambda event, cell=new_cell: self.handle_left_click(event, cell))
+            new_cell.label.bind("<Button-3>", lambda event, cell=new_cell: self.handle_right_click(event, cell))
             self.cells.append(new_cell)
 
     def tag_exists_in_cells(self, text):
@@ -359,9 +427,18 @@ class ImageTextViewer:
         return color_code
 
     def delete_cell(self, cell):
-        cell.label.destroy()
-        self.cells.remove(cell)
-        self.rearrange_cells()
+        confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete this cell?")
+        if confirm:
+            cell.label.destroy()
+            self.cells.remove(cell)
+            self.rearrange_cells()
+
+    def delete_cell_all(self):
+        confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete all cells?")
+        if confirm:
+            for cell in self.cells:
+                cell.label.destroy()
+            self.cells.clear()
 
     def rearrange_cells(self):
         for idx, cell in enumerate(self.cells):
@@ -387,6 +464,7 @@ class ImageTextViewer:
                         if line:
                             items = line.split(',')
                             for item in items:
+                                item = self.clean_tag(item)
                                 self.add_cell(item.strip())
 
     def load_tags_from_files(self):
@@ -396,12 +474,24 @@ class ImageTextViewer:
                 with open(txt_path, 'r') as txt_file:
                     tags = txt_file.read().split(',')
                     for tag in tags:
-                        clean_tag = tag.strip()
+                        clean_tag = self.clean_tag(tag)
                         if clean_tag:
                             if clean_tag in self.tag_counts:
                                 self.tag_counts[clean_tag] += 1
                             else:
                                 self.tag_counts[clean_tag] = 1
+
+    def clean_tag(self, tag):
+        if(self.options["clean_tags"] == True):
+            clean_tag = tag.strip()
+            clean_tag = clean_tag.replace("Prompt: ", "")
+            clean_tag = clean_tag.replace(":", "")
+            clean_tag = clean_tag.replace("(", "")
+            clean_tag = clean_tag.replace(")", "")
+            clean_tag = clean_tag.replace("{", "")
+            clean_tag = clean_tag.replace("}", "")
+            clean_tag = clean_tag.replace("+", "")
+        return(clean_tag)
 
     def update_tag_dropdown(self):
         sorted_tags = sorted(self.tag_counts.keys(), key=lambda tag: self.tag_counts[tag], reverse=True)
