@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.08.24.B"
+file_version = "2023.08.27.A"
 
 class Cell:
     def __init__(self, master, text):
@@ -139,6 +139,7 @@ class ImageTextViewer:
                 cell.label.config(relief="solid", borderwidth=2, bg="yellow")
                 cell.selected = True
             self.current_selected_cell = cell  # Update the current_selected_cell attribute
+            self.update_selected_tags()
         else:
             self.select_cell(cell)
 
@@ -157,6 +158,13 @@ class ImageTextViewer:
         else:
             cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
             cell.selected = False
+        # Construct the selected cells text from all selected cells
+        self.update_selected_tags()
+
+    def update_selected_tags(self):
+        selected_cells = [selected_cell.text for selected_cell in self.cells if selected_cell.selected]
+        selected_cells_text = ", ".join(selected_cells)
+        self.tag_var.set(selected_cells_text)
 
     def add_tag_from_dropdown(self):
         selected_tag = self.tag_var.get()
@@ -174,7 +182,9 @@ class ImageTextViewer:
                 else:
                     self.tag_counts[selected_tag] = 1
 
+        self.tag_var.set("")
         self.update_tag_dropdown()
+        self.tag_var.set("")
 
     def save_text(self):
         if self.image_files and 0 <= self.current_index < len(self.image_files):
@@ -193,9 +203,11 @@ class ImageTextViewer:
             with open(new_txt_path, 'w') as txt_file:
                 txt_file.write(image_text)
 
-            with open(image_path, 'rb') as src_image_file:
-                with open(new_image_path, 'wb') as dest_image_file:
-                    dest_image_file.write(src_image_file.read())
+            if image_path != new_image_path:
+                with open(image_path, 'rb') as src_image_file:
+                    with open(new_image_path, 'wb') as dest_image_file:
+                        dest_image_file.write(src_image_file.read())
+        self.reload_tags_from_files()
 
     def select_source_folder(self):
         selected_folder = filedialog.askdirectory()
@@ -253,12 +265,14 @@ class ImageTextViewer:
             self.current_index = (self.current_index + 1) % len(self.image_files)
             self.load_image_and_text()
             self.load_cells()
+        self.reload_tags_from_files()
 
     def load_previous(self):
         if self.image_files:
             self.current_index = (self.current_index - 1) % len(self.image_files)
             self.load_image_and_text()
             self.load_cells()
+        self.reload_tags_from_files()
 
     def slider_callback(self, value):
         if self.image_files:
@@ -300,6 +314,7 @@ class ImageTextViewer:
             self.slider.set(0)
 
     def show_popup(self, event, cell):
+        self.current_selected_cell = cell
         popup_menu = Menu(self.bottom_tag_frame, tearoff=0)
         popup_menu.add_command(label="Delete", command=lambda: self.delete_cell(cell))
         popup_menu.add_command(label="Delete All", command=lambda: self.delete_cell_all(cell))
@@ -309,8 +324,10 @@ class ImageTextViewer:
         popup_menu.add_command(label="Move to Front", command=lambda: self.move_cell_to_front(cell))
         popup_menu.add_command(label="Move to Back", command=lambda: self.move_cell_to_back(cell))
         popup_menu.add_separator()
-        popup_menu.add_command(label="Swap Spaces and Underscores", command=lambda: self.swap_spaces_underscores_all_cells())
-        popup_menu.add_command(label="Change Case", command=lambda: self.change_case_all_cells(cell))
+        popup_menu.add_command(label="Swap Spaces and Underscores", command=lambda: self.swap_spaces_underscores_selected_cells())
+        popup_menu.add_command(label="Change Case", command=lambda: self.change_case_selected_cells())
+        popup_menu.add_command(label="Split Words into New Tags", command=lambda: self.split_tags_into_new_tags())
+
         popup_menu.tk_popup(event.x_root, event.y_root)
 
     def move_cell_up(self, this_cell):
@@ -368,37 +385,84 @@ class ImageTextViewer:
             self.cells.append(this_cell)
         self.rearrange_cells()
 
-    def swap_spaces_underscores_all_cells(self):
+    def swap_spaces_underscores_selected_cells(self):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if not selected_cells:
+            selected_cells = [self.current_selected_cell]
+
         replace = "False"
-        for cell in self.cells:
+        if "_" in selected_cells[0].text:
+            replace = "space"
+        elif " " in selected_cells[0].text:
+            replace = "underscores"
+        else:
+            replace = "False"
+
+        for cell in selected_cells:
             new_text = cell.text
-            if replace == "False":
-                if " " in cell.text:
-                    replace = "space"
-                elif "_" in cell.text:
-                    replace = "underscores"
-                else:
-                    replace = "False"
-            if replace != "False":
-                if replace == "space":
-                    new_text = cell.text.replace(' ', '_')
-                else:
-                    new_text = cell.text.replace('_', ' ')
+            if replace == "space":
+                new_text = cell.text.replace('_', ' ')
+            elif replace == "underscores":
+                new_text = cell.text.replace(' ', '_')
+            else:
+                new_text = new_text
+
+            if cell.text in self.tag_counts:
+                self.tag_counts[cell.text] -= 1
 
             cell.text = new_text
             cell.label.config(text=new_text)
 
-    def change_case_all_cells(self, cell):
-        first_cell_text = self.cells[0].text
+            if new_text in self.tag_counts:
+                self.tag_counts[new_text] += 1
+            else:
+                self.tag_counts[new_text] = 1
+
+        self.update_selected_tags()
+
+    def change_case_selected_cells(self):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if not selected_cells:
+            selected_cells = [self.current_selected_cell]
+
+        first_cell_text = selected_cells[0].text
         if first_cell_text.islower():
             change_function = str.title
         else:
             change_function = str.lower
 
-        for cell in self.cells:
+        for cell in selected_cells:
             new_text = change_function(cell.text)
+            if cell.text in self.tag_counts:
+                self.tag_counts[cell.text] -= 1  # Decrement count for the old text
             cell.text = new_text
             cell.label.config(text=new_text)
+            if new_text in self.tag_counts:
+                self.tag_counts[new_text] += 1  # Increment count for the new text
+            else:
+                self.tag_counts[new_text] = 1
+        self.update_selected_tags()
+
+    def split_tags_into_new_tags(self):
+        selected_cells = [cell for cell in self.cells if cell.selected]
+        if not selected_cells:
+            selected_cells = [self.current_selected_cell]
+
+        for cell in selected_cells:
+            words = cell.text.split()  # Split text into words
+            if cell.text in self.tag_counts:
+                self.tag_counts[cell.text] -= 1
+            for word in words:
+                cleaned_word = self.clean_tag(word)
+                if cleaned_word in self.tag_counts:
+                    self.tag_counts[cleaned_word] += 1
+                else:
+                    self.tag_counts[cleaned_word] = 1
+                self.add_cell(cleaned_word)
+            self.delete_cell(cell)  # Delete the original cell after splitting words
+        self.reload_tags_from_files()
+        self.update_selected_tags()
+        self.rearrange_cells()
 
     def sort_cells(self):
         self.cells.sort(key=lambda cell: cell.text.lower())
@@ -414,7 +478,13 @@ class ImageTextViewer:
             new_cell = Cell(self.tag_frame, text)
             new_cell.label = tk.Label(new_cell.master, text=text, relief="solid", borderwidth=1)
 
-            tag_frequency = self.tag_counts.get(text, 0)
+            # Increment tag frequency for the new tag being added
+            if text in self.tag_counts:
+                self.tag_counts[text] += 1
+            else:
+                self.tag_counts[text] = 1
+
+            tag_frequency = self.tag_counts[text]  # Get the updated frequency
             color = self.calculate_color(tag_frequency)
             new_cell.label.config(bg=color, fg="black")
 
@@ -528,6 +598,11 @@ class ImageTextViewer:
         self.tag_dropdown['values'] = tag_with_count
 
         self.tag_dropdown.bind("<Return>", lambda event: self.add_tag_from_dropdown())
+
+    def reload_tags_from_files(self):
+        self.tag_counts = {}
+        self.load_tags_from_files()
+        self.update_tag_dropdown()
 
     def open_help_dialog(self):
         help_image_path = "help.webp"
