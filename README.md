@@ -14,8 +14,9 @@ Known Issues:<br>
 -Sometimes glitches out in folders with 1 or 2 images. (I think I fixed that)<br>
 -Issues with multiple image file types.<br>
 -Need to add scroll bars to the cells/tags portion of the window. Making window larger fixes it for now.<br>
--Text files, such as the ones A1111 make, with multiple lines and tags, cause issues with the first and last tags on the 2nd or higher line. I dont know why yet.
-(Temp fix is to right click those cells and modify the text, change case, and it will act normal after that.)
+-Text files, such as the ones A1111 make, with multiple lines and tags, cause issues with the first and last tags on the 2nd or higher line. I dont know why yet.<br>
+(You wont really know which ones are glitched untill you cant unselect it.)
+(Work around is to right-click the cell and modify the text, EX: change case, and it will act normal after that.)
 
 Planned Features:<br>
 (Most likely to get done if I dont get lazy.)<br>
