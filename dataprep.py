@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.08.27.A"
+file_version = "2023.08.27.B"
 
 class Cell:
     def __init__(self, master, text):
@@ -21,9 +21,10 @@ class ImageTextViewer:
 
         self.options = {
             "clean_tags": True,
-            "tag_columns": 4
+            "tag_columns": 4,
+            "style": "Black"
         }
-
+        self.set_current_style()
         self.root.pack_propagate(False)
 
         self.top_frame = tk.Frame(root, relief="solid")
@@ -55,6 +56,9 @@ class ImageTextViewer:
 
         self.help_button = tk.Button(self.top_frame, text="?", command=self.open_help_dialog)
         self.help_button.pack(side=tk.RIGHT)
+
+        self.toggle_style_button = tk.Button(self.top_frame, text="*", command=self.toggle_style)
+        self.toggle_style_button.pack(side=tk.RIGHT)
 
         self.prev_button = tk.Button(self.top_frame, text="Previous", command=self.load_previous)
         self.prev_button.pack(side=tk.LEFT)
@@ -124,6 +128,7 @@ class ImageTextViewer:
         self.tag_frame.bind("<Configure>", self.on_tag_frame_configure)
 
         self.cells = []
+        self.apply_style()
         self.load_images()
         self.load_next()
 
@@ -167,24 +172,23 @@ class ImageTextViewer:
         self.tag_var.set(selected_cells_text)
 
     def add_tag_from_dropdown(self):
-        selected_tag = self.tag_var.get()
-        selected_tag = selected_tag.rsplit(" - ")[-1]
+        tag_text = self.tag_var.get()
+        tag_text = tag_text.rsplit(" - ")[-1]
 
-        selected_tags = selected_tag.split(',')
-        for selected_tag in selected_tags:
-            selected_tag = selected_tag.strip()
-            if selected_tag and not self.tag_exists_in_cells(selected_tag):
-                self.add_cell(selected_tag)
+        tags = tag_text.split(',')
+        for tag in tags:
+            tag = tag.strip()
+            if tag and not self.tag_exists_in_cells(tag):
+                self.add_cell(tag)
 
                 # Update tag_counts dictionary
-                if selected_tag in self.tag_counts:
-                    self.tag_counts[selected_tag] += 1
+                if tag in self.tag_counts:
+                    self.tag_counts[tag] += 1
                 else:
-                    self.tag_counts[selected_tag] = 1
+                    self.tag_counts[tag] = 1
 
         self.tag_var.set("")
         self.update_tag_dropdown()
-        self.tag_var.set("")
 
     def save_text(self):
         if self.image_files and 0 <= self.current_index < len(self.image_files):
@@ -235,20 +239,19 @@ class ImageTextViewer:
         self.cells.clear()
         self.load_images()
         self.load_next()
+        self.set_output_dir_color()
 
+    def set_output_dir_color(self):
         if self.output_directory != self.source_directory:
-            self.select_output_folder_button.config(bg="green")
+            self.select_output_folder_button.config(fg="red")
         else:
-            self.select_output_folder_button.config(bg="SystemButtonFace")
+            self.select_output_folder_button.config(fg=self.style["fg_color"])
 
     def select_output_folder(self):
         selected_output_folder = filedialog.askdirectory()
         if selected_output_folder:
             self.output_directory = selected_output_folder
-        if self.output_directory != self.source_directory:
-            self.select_output_folder_button.config(bg="green")
-        else:
-            self.select_output_folder_button.config(bg="SystemButtonFace")
+        self.set_output_dir_color()
 
     def load_images(self):
         self.image_files = [file for file in os.listdir(self.source_directory) if file.lower().endswith(('.jpg', '.png', '.jpeg', '.webp'))]
@@ -478,13 +481,12 @@ class ImageTextViewer:
             new_cell = Cell(self.tag_frame, text)
             new_cell.label = tk.Label(new_cell.master, text=text, relief="solid", borderwidth=1)
 
-            # Increment tag frequency for the new tag being added
             if text in self.tag_counts:
                 self.tag_counts[text] += 1
             else:
                 self.tag_counts[text] = 1
 
-            tag_frequency = self.tag_counts[text]  # Get the updated frequency
+            tag_frequency = self.tag_counts[text]
             color = self.calculate_color(tag_frequency)
             new_cell.label.config(bg=color, fg="black")
 
@@ -519,7 +521,7 @@ class ImageTextViewer:
 
     def delete_cell(self, this_cell):
         selected_cells = [cell for cell in self.cells if cell.selected]
-        if selected_cells:
+        if selected_cells and len(selected_cells) > 1:
             confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete these cell?")
             if confirm:
                 for cell in selected_cells:
@@ -582,6 +584,7 @@ class ImageTextViewer:
 
     def clean_tag(self, tag):
         if(self.options["clean_tags"] == True):
+
             clean_tag = tag.strip()
             clean_tag = clean_tag.replace("Prompt: ", "")
             clean_tag = clean_tag.replace(":", "")
@@ -601,6 +604,7 @@ class ImageTextViewer:
 
     def reload_tags_from_files(self):
         self.tag_counts = {}
+
         self.load_tags_from_files()
         self.update_tag_dropdown()
 
@@ -608,7 +612,7 @@ class ImageTextViewer:
         help_image_path = "help.webp"
         if os.path.exists(help_image_path):
             help_image = Image.open(help_image_path)
-            help_image.thumbnail((800, 600))  # Resize the image if needed
+            help_image.thumbnail((800, 600))
             help_image = ImageTk.PhotoImage(help_image)
 
             help_message = tk.Toplevel(self.root)
@@ -623,8 +627,95 @@ class ImageTextViewer:
         else:
             messagebox.showerror("Error", "Help image not found!")
 
-        # Create a simple dialog with the example text
-        tkinter.simpledialog.messagebox.showinfo("Help", example_text)
+    def toggle_style(self):
+        if self.options["style"] == "Normal":
+            self.options["style"] = "Black"
+        else:
+            self.options["style"] = "Normal"
+        self.set_current_style()
+        self.apply_style()
+
+    def apply_style(self):
+        bg_color = self.style["bg_color"]
+        fg_color = self.style["fg_color"]
+
+        self.root.configure(bg=bg_color)
+        self.top_frame.configure(bg=bg_color)
+        self.text_frame.configure(bg=bg_color)
+        self.top_tag_frame.configure(bg=bg_color)
+        self.tag_dropdown_frame.configure(bg=bg_color)
+        self.bottom_tag_frame.configure(bg=bg_color)
+        self.tag_frame.configure(bg=bg_color)
+        self.bottom_tag_canvas.configure(bg=bg_color)
+
+        style = ttk.Style()
+        style.configure("TScale", background=bg_color, troughcolor=bg_color, sliderbackground=fg_color)
+
+        self.toggle_style_button.configure(bg=bg_color, fg=fg_color)
+        self.help_button.configure(bg=bg_color, fg=fg_color)
+        self.prev_button.configure(bg=bg_color, fg=fg_color)
+        self.next_button.configure(bg=bg_color, fg=fg_color)
+        self.select_source_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
+        self.select_output_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
+        self.save_button.configure(bg=bg_color, fg=fg_color)
+        self.image_label.configure(bg=bg_color, fg=fg_color)
+        self.image_name_label.configure(bg=bg_color, fg=fg_color)
+        self.freq_tag_label.configure(bg=bg_color, fg=fg_color)
+        #self.tag_var.configure(bg=bg_color, fg=fg_color)
+        #self.tag_dropdown.configure(bg=bg_color, fg=fg_color)
+        self.add_tag_from_dropdown_button.configure(bg=bg_color, fg=fg_color)
+        self.sort_button.configure(bg=bg_color, fg=fg_color)
+        self.sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
+        self.bottom_tag_canvas.configure(bg=bg_color)
+
+        self.set_output_dir_color()
+        self.update_cell_style()
+
+    def update_cell_style(self):
+        for cell in self.cells:
+            if cell.selected:
+                cell.label.config(relief="solid", borderwidth=2, bg="yellow", fg="black")
+            else:
+                tag_frequency = self.tag_counts[cell.text]
+                cell.label.configure(bg=self.calculate_color(self.tag_counts[cell.text]), fg="black")
+
+    def set_current_style(self):
+        style = self.options["style"]
+        if style == "White":
+            self.style = {
+                "bg_color": "white",
+                "fg_color": "black",
+                "btn_bg_color": "white",
+                "btn_fg_color": "black"
+            }
+        elif style == "Black":
+            self.style = {
+                "bg_color": "black",
+                "fg_color": "white",
+                "btn_bg_color": "black",
+                "btn_fg_color": "white"
+            }
+        elif style == "Dark":
+            self.style = {
+                "bg_color": "darkgrey",
+                "fg_color": "white",
+                "btn_bg_color": "darkgrey",
+                "btn_fg_color": "white"
+            }
+        elif style == "Normal":
+            self.style = {
+                "bg_color": "lightgrey",
+                "fg_color": "black",
+                "btn_bg_color": "SystemButtonFace",
+                "btn_fg_color": "black"
+            }
+        else:
+            self.style = {
+                "bg_color": "lightgrey",
+                "fg_color": "black",
+                "btn_bg_color": "lightgrey",
+                "btn_fg_color": "black"
+            }
 
 if __name__ == "__main__":
     root = tk.Tk()

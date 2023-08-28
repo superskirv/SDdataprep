@@ -10,19 +10,19 @@ python dataprep.py<br>
 
 Run python scripts without console window by changing script type to "*.pyw"<br>
 
-Lingering issues:<br>
+Known Issues:<br>
 -Sometimes glitches out in folders with 1 or 2 images. (I think I fixed that)<br>
 -Issues with multiple image file types.<br>
 -Need to add scroll bars to the cells/tags portion of the window. Making window larger fixes it for now.<br>
-ChatGPT lost them when I made a bunch of other changes, and I knew I could get them back later. I just havent gotten around to it.<br>
+-Text files, such as the ones A1111 make, with multiple lines and tags, cause issues with the first and last tags on the 2nd or higher line. I dont know why yet.
+(Temp fix is to right click those cells and modify the text, change case, and it will act normal after that.)
 
-Features to Add:<br>
+Planned Features:<br>
 (Most likely to get done if I dont get lazy.)<br>
--Night Mode, make it darker.<br>
 -Want to make the cells/tags columns change size dynamically, or at least user selected.<br>
 -Make it possible to add/delete a specific tag from across all files.<br>
--Autocomplete tags while typing, using a very simple way.<br>
--Import ImageMagick into the project and use that to modify images/file types/sizes/etc<br>
+-Autocomplete tags while typing.<br>
+-Add some sort of basic image editing(stretching, canvas size, crop)
 
 Dream Sheet:<br>
 (I doubt I will be able to accomplish by myself.)<br>
