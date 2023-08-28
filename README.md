@@ -27,6 +27,6 @@ Planned Features:<br>
 Dream Sheet:<br>
 (I doubt I will be able to accomplish by myself.)<br>
 -And options for user options to select which colors they want specific tags to be.<br>
--Add option to create initial tags for all images using danbooru.<br>
+-Add option to create initial tags for all images using ai.<br>
 -Drag and Drop functionality to cell tags.<br>
 -Dynamically sized cell/tag list, no longer on a grid, just shoving them in until they have to wrap around the given work space.<br>

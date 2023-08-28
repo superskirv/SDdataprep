@@ -17,7 +17,7 @@ class Cell:
 class ImageTextViewer:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Text Viewer " + file_version)
+        self.root.title("SD Data Prep " + file_version)
 
         self.options = {
             "clean_tags": True,
