@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.08.27.B"
+file_version = "2023.08.28.B"
 
 class Cell:
     def __init__(self, master, text):
@@ -143,7 +143,7 @@ class ImageTextViewer:
             else:
                 cell.label.config(relief="solid", borderwidth=2, bg="yellow")
                 cell.selected = True
-            self.current_selected_cell = cell  # Update the current_selected_cell attribute
+            self.current_selected_cell = cell
             self.update_selected_tags()
         else:
             self.select_cell(cell)
@@ -159,11 +159,11 @@ class ImageTextViewer:
                     other_cell.selected = False
             cell.label.config(relief="solid", borderwidth=2, bg="yellow")
             cell.selected = True
-            self.current_selected_cell = cell  # Update the current_selected_cell attribute
+            self.current_selected_cell = cell
         else:
             cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
             cell.selected = False
-        # Construct the selected cells text from all selected cells
+
         self.update_selected_tags()
 
     def update_selected_tags(self):
@@ -241,11 +241,13 @@ class ImageTextViewer:
         self.load_next()
         self.set_output_dir_color()
 
-    def set_output_dir_color(self):
+    def set_output_dir_color(self): #makes output dir button have red or black text
         if self.output_directory != self.source_directory:
             self.select_output_folder_button.config(fg="red")
+            self.select_source_folder_button.configure(fg="red")
         else:
-            self.select_output_folder_button.config(fg=self.style["fg_color"])
+            self.select_output_folder_button.config(fg="green")
+            self.select_source_folder_button.configure(fg="green")
 
     def select_output_folder(self):
         selected_output_folder = filedialog.askdirectory()
@@ -440,11 +442,11 @@ class ImageTextViewer:
         for cell in selected_cells:
             new_text = change_function(cell.text)
             if cell.text in self.tag_counts:
-                self.tag_counts[cell.text] -= 1  # Decrement count for the old text
+                self.tag_counts[cell.text] -= 1
             cell.text = new_text
             cell.label.config(text=new_text)
             if new_text in self.tag_counts:
-                self.tag_counts[new_text] += 1  # Increment count for the new text
+                self.tag_counts[new_text] += 1
             else:
                 self.tag_counts[new_text] = 1
         self.update_selected_tags()
@@ -455,7 +457,7 @@ class ImageTextViewer:
             selected_cells = [self.current_selected_cell]
 
         for cell in selected_cells:
-            words = cell.text.split()  # Split text into words
+            words = cell.text.split()
             if cell.text in self.tag_counts:
                 self.tag_counts[cell.text] -= 1
             for word in words:
@@ -465,7 +467,7 @@ class ImageTextViewer:
                 else:
                     self.tag_counts[cleaned_word] = 1
                 self.add_cell(cleaned_word)
-            self.delete_cell(cell)  # Delete the original cell after splitting words
+            self.delete_cell(cell)  # Request delete original cell(s) after splitting words
         self.reload_tags_from_files()
         self.update_selected_tags()
         self.rearrange_cells()
