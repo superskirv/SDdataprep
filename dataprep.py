@@ -335,10 +335,12 @@ class ImageTextViewer:
 
     def move_cell_up(self, this_cell):
         selected_cells = [cell for cell in self.cells if cell.selected]
+        last = 0
         if selected_cells:
             for cell in selected_cells:
                 index = self.cells.index(cell)
-                if index > 0:
+                last = index
+                if index > 0 and last+1 < index:
                     self.cells.pop(index)
                     self.cells.insert(index - 1, cell)
         else:
@@ -354,12 +356,13 @@ class ImageTextViewer:
         if selected_cells:
             for cell in selected_cells:
                 index = self.cells.index(cell)
-                if index < len(self.cells) - (1):
+                if index < len(self.cells) - 1:
                     self.cells.pop(index)
-                    self.cells.insert(index + (1), cell)
+                    self.cells.insert(index + len(selected_cells), cell)
         else:
             index = self.cells.index(this_cell)
             if index < len(self.cells) - 1:
+                index = self.cells.index(this_cell)
                 self.cells.pop(index)
                 self.cells.insert(index + 1, this_cell)
         self.rearrange_cells()
@@ -371,7 +374,7 @@ class ImageTextViewer:
             for cell in selected_cells:
                 self.cells.remove(cell)
                 self.cells.insert(mov_cnt, cell)
-                mov_cnt = mov_cnt + 1
+                mov_cnt += 1
         else:
             self.cells.remove(this_cell)
             self.cells.insert(0, this_cell)
@@ -719,6 +722,6 @@ class ImageTextViewer:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.geometry("800x600")
+    root.geometry("900x600")
     app = ImageTextViewer(root)
     root.mainloop()
