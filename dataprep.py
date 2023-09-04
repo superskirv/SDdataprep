@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.08.28.B"
+file_version = "2023.09.04.A"
 
 class Cell:
     def __init__(self, master, text):
@@ -338,7 +338,7 @@ class ImageTextViewer:
     def move_cell_up(self, this_cell):
         selected_cells = [cell for cell in self.cells if cell.selected]
         last = 0
-        if selected_cells:
+        if selected_cells and len(selected_cells) > 1:
             for cell in selected_cells:
                 index = self.cells.index(cell)
                 last = index
@@ -355,7 +355,7 @@ class ImageTextViewer:
 
     def move_cell_down(self, this_cell):
         selected_cells = [cell for cell in self.cells if cell.selected]
-        if selected_cells:
+        if selected_cells and len(selected_cells) > 1:
             for cell in selected_cells:
                 index = self.cells.index(cell)
                 if index < len(self.cells) - 1:
