@@ -507,7 +507,7 @@ class ImageTextViewer:
         return False
 
     def calculate_color(self, frequency):
-        normalized_value = (frequency - self.min_tag_count) / (self.max_tag_count - self.min_tag_count)
+        normalized_value = (frequency - self.min_tag_count) / max((self.max_tag_count - self.min_tag_count),1)
 
         red = int(255 * (1 - normalized_value))
         green = int(200 * normalized_value)
