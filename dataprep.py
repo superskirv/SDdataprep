@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.09.17.A"
+file_version = "2023.09.17.B"
 
 class Cell:
     def __init__(self, master, text):
@@ -126,16 +126,24 @@ class ImageTextViewer:
 
         self.bottom_tag_canvas.create_window((0, 0), window=self.tag_frame, anchor="nw")
         self.tag_frame.bind("<Configure>", self.on_tag_frame_configure)
+        root.bind("<Control-a>", self.select_all_cells)
+        root.bind("<Control-d>", self.deselect_all_cells)
+        root.bind("<Control-c>", self.copy_selected_tags_to_clipboard)
 
         self.cells = []
         self.apply_style()
         self.load_images()
         self.load_next()
 
+    def tag_dropdown_focus_out(self, event=None):
+        # Unselect the tag_dropdown when it loses focus (clicked outside)
+        self.image_name_label.focus_set()
+
     def on_tag_frame_configure(self, event):
         self.bottom_tag_canvas.configure(scrollregion=self.bottom_tag_canvas.bbox("all"))
 
     def handle_left_click(self, event, cell):
+        self.tag_dropdown_focus_out()
         if event.state & 0x4:  # Check if Ctrl is held
             if cell.selected:
                 cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
@@ -149,9 +157,11 @@ class ImageTextViewer:
             self.select_cell(cell)
 
     def handle_right_click(self, event, cell):
+        self.tag_dropdown_focus_out()
         self.show_popup(event, cell)
 
     def select_cell(self, cell):
+        self.tag_dropdown_focus_out()
         if not cell.selected:
             for other_cell in self.cells:
                 if other_cell.selected:
@@ -239,6 +249,8 @@ class ImageTextViewer:
         self.cells.clear()
         self.load_images()
         self.load_next()
+
+        self.select_output_folder(True)
         self.set_output_dir_color()
 
     def set_output_dir_color(self): #makes output dir button have red or black text
@@ -249,10 +261,13 @@ class ImageTextViewer:
             self.select_output_folder_button.config(fg="green")
             self.select_source_folder_button.configure(fg="green")
 
-    def select_output_folder(self):
-        selected_output_folder = filedialog.askdirectory()
-        if selected_output_folder:
-            self.output_directory = selected_output_folder
+    def select_output_folder(self, override=False):
+        if not override:
+            selected_output_folder = filedialog.askdirectory()
+            if selected_output_folder:
+                self.output_directory = selected_output_folder
+        else:
+            self.output_directory = self.source_directory
         self.set_output_dir_color()
 
     def load_images(self):
@@ -321,9 +336,6 @@ class ImageTextViewer:
     def show_popup(self, event, cell):
         self.current_selected_cell = cell
         popup_menu = Menu(self.bottom_tag_frame, tearoff=0)
-        popup_menu.add_command(label="Delete", command=lambda: self.delete_cell(cell))
-        popup_menu.add_command(label="Delete All", command=lambda: self.delete_cell_all(cell))
-        popup_menu.add_separator()
         popup_menu.add_command(label="Move Up", command=lambda: self.move_cell_up(cell))
         popup_menu.add_command(label="Move Down", command=lambda: self.move_cell_down(cell))
         popup_menu.add_command(label="Move to Front", command=lambda: self.move_cell_to_front(cell))
@@ -332,8 +344,39 @@ class ImageTextViewer:
         popup_menu.add_command(label="Swap Spaces and Underscores", command=lambda: self.swap_spaces_underscores_selected_cells())
         popup_menu.add_command(label="Change Case", command=lambda: self.change_case_selected_cells())
         popup_menu.add_command(label="Split Words into New Tags", command=lambda: self.split_tags_into_new_tags())
+        popup_menu.add_separator()
+        popup_menu.add_command(label="Select All", command=lambda: self.select_all_cells())
+        popup_menu.add_command(label="Deselect All", command=lambda: self.deselect_all_cells())
+        popup_menu.add_command(label="Copy Tags", command=lambda: self.copy_selected_tags_to_clipboard())
+        popup_menu.add_separator()
+        popup_menu.add_command(label="Delete", command=lambda: self.delete_cell(cell))
+        popup_menu.add_command(label="Delete All", command=lambda: self.delete_cell_all(cell))
 
         popup_menu.tk_popup(event.x_root, event.y_root)
+
+    def copy_selected_tags_to_clipboard(self, event=None):
+        self.tag_dropdown_focus_out()
+        selected_tags = [cell.text for cell in self.cells if cell.selected]
+        formatted_tags = ', '.join(selected_tags)
+
+        self.root.clipboard_clear()
+        self.root.clipboard_append(formatted_tags)
+        self.root.update()
+        self.update_selected_tags()
+
+    def select_all_cells(self, event=None):
+        self.tag_dropdown_focus_out()
+        for cell in self.cells:
+            cell.label.config(relief="solid", borderwidth=2, bg="yellow")
+            cell.selected = True
+        self.update_selected_tags()
+
+    def deselect_all_cells(self, event=None):
+        self.tag_dropdown_focus_out()
+        for cell in self.cells:
+            cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
+            cell.selected = False
+        self.update_selected_tags()
 
     def move_cell_up(self, this_cell):
         selected_cells = [cell for cell in self.cells if cell.selected]
@@ -553,6 +596,7 @@ class ImageTextViewer:
             cell.label.grid(row=row, column=col, padx=1, pady=1)
 
     def load_cells(self):
+        self.tag_dropdown_focus_out()
         self.cols = self.options["tag_columns"]
         for cell in self.cells:
             cell.label.destroy()
