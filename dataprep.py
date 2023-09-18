@@ -5,7 +5,7 @@ from PIL import Image, ImageTk
 
 global img_dir, file_version
 img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.09.04.A"
+file_version = "2023.09.17.A"
 
 class Cell:
     def __init__(self, master, text):
