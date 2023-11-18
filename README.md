@@ -1,8 +1,7 @@
 # SDdataprep
-<h1>Most Likely Abandoned.</h1>
-I havent been interested in creating datasets for lora training and so I havent been using this, thus I am not interested in updating and maintaining it at the moment. I still check in on github fairly frequently.<br><hr>
+<hr>
 About:<br>
-This does not create the initial datasets. This simply looks into a specified folder and pulls up the images and text files of the same name. It also looks into all text files in the folder and generates a list of tags and sorts them based on frequency. You can add multiple tags at once, it will automatically separate them based on the commas. It will also checks for duplicate tags before adding them, though if there is a small difference in wording it will miss it. If the text file does not exist you can create it when you click save. You can also save your changes to a different directory keeping your original data unmodified. I would still back it up.<br>
+This is designed to help you create/modify/sort tags for stable diffusion. This does not create the initial datasets. This simply looks into a specified folder and pulls up the images and text files of the same name. It also looks into all text files in the folder and generates a list of tags and sorts them based on frequency. You can add multiple tags at once, it will automatically separate them based on the commas. It will also checks for duplicate tags before adding them, though if there is a small difference in wording it will miss it. If the text file does not exist you can create it when you click save. You can also save your changes to a different directory keeping your original data unmodified, but its kind of borked and doesn't work great, so I wouldnt recommend it. I would still back up your data and work from a duplicate directory.<br>
 
 Dependencies:<br>
 pip install Pillow<br>

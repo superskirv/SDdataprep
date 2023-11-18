@@ -4,8 +4,8 @@ from tkinter import ttk, Canvas, Text, Scrollbar, Menu, messagebox, filedialog
 from PIL import Image, ImageTk
 
 global img_dir, file_version
-img_dir = "./working_dir/" # used for initial start up only.
-file_version = "2023.09.17.B"
+img_dir = "./" # used for initial start up only.
+file_version = "2023.11.17.A"
 
 class Cell:
     def __init__(self, master, text):
@@ -41,7 +41,7 @@ class ImageTextViewer:
         self.load_tags_from_files()
         self.current_selected_cell = None
 
-        if self.check_for_image_files(self.source_directory) <= 1:
+        if self.check_for_image_files(self.source_directory) < 2:
             self.source_directory = "./"
             self.min_tag_count = 0
             self.max_tag_count = 1
@@ -65,6 +65,9 @@ class ImageTextViewer:
 
         self.next_button = tk.Button(self.top_frame, text="Next", command=self.load_next)
         self.next_button.pack(side=tk.LEFT)
+
+        self.set_custom_button = tk.Button(self.top_frame, text="Set Custom Tags", command=self.set_custom_tags)
+        self.set_custom_button.pack(side=tk.LEFT)
 
         self.select_source_folder_button = tk.Button(self.top_frame, text="Select Source Folder", command=self.select_source_folder)
         self.select_source_folder_button.pack(side=tk.RIGHT)
@@ -110,6 +113,9 @@ class ImageTextViewer:
 
         self.sort_by_frequency_button = tk.Button(self.top_tag_frame, text="Sort Frequency", command=self.sort_cells_by_frequency)
         self.sort_by_frequency_button.pack(side=tk.LEFT)
+
+        self.sort_custom_button = tk.Button(self.top_tag_frame, text="Sort Custom", command=self.sort_custom_tags)
+        self.sort_custom_button.pack(side=tk.LEFT)
 
         self.bottom_tag_frame = tk.Frame(self.text_frame, relief="solid")
         self.bottom_tag_frame.pack(padx=0, pady=0, fill=tk.BOTH, expand=True)
@@ -282,6 +288,7 @@ class ImageTextViewer:
 
     def load_next(self):
         if self.image_files:
+            self.save_text()
             self.current_index = (self.current_index + 1) % len(self.image_files)
             self.load_image_and_text()
             self.load_cells()
@@ -289,6 +296,7 @@ class ImageTextViewer:
 
     def load_previous(self):
         if self.image_files:
+            self.save_text()
             self.current_index = (self.current_index - 1) % len(self.image_files)
             self.load_image_and_text()
             self.load_cells()
@@ -298,6 +306,7 @@ class ImageTextViewer:
         if self.image_files:
             new_index = int(round(float(value)))
             if new_index != self.current_index:
+                self.save_text()
                 self.current_index = new_index
                 self.load_image_and_text()
                 self.load_cells()
@@ -704,6 +713,7 @@ class ImageTextViewer:
         self.help_button.configure(bg=bg_color, fg=fg_color)
         self.prev_button.configure(bg=bg_color, fg=fg_color)
         self.next_button.configure(bg=bg_color, fg=fg_color)
+        self.set_custom_button.configure(bg=bg_color, fg=fg_color)
         self.select_source_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
         self.select_output_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
         self.save_button.configure(bg=bg_color, fg=fg_color)
@@ -715,6 +725,7 @@ class ImageTextViewer:
         self.add_tag_from_dropdown_button.configure(bg=bg_color, fg=fg_color)
         self.sort_button.configure(bg=bg_color, fg=fg_color)
         self.sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
+        self.sort_custom_button.configure(bg=bg_color, fg=fg_color)
         self.bottom_tag_canvas.configure(bg=bg_color)
 
         self.set_output_dir_color()
@@ -765,6 +776,117 @@ class ImageTextViewer:
                 "btn_bg_color": "lightgrey",
                 "btn_fg_color": "black"
             }
+
+    def set_custom_tags(self):
+        custom_sort_file = os.path.join(self.source_directory, "custom_tag_sort.txt")
+
+        bg_color = self.style["bg_color"]
+        fg_color = self.style["fg_color"]
+
+        if os.path.exists(custom_sort_file):
+            with open(custom_sort_file, 'r') as custom_sort_file:
+                custom_sort_content = custom_sort_file.read()
+
+            custom_sort_window = tk.Toplevel(self.root)
+            custom_sort_window.title("Custom Tag Sort")
+
+            custom_sort_text = Text(custom_sort_window)
+            custom_sort_text.pack(fill=tk.BOTH, expand=True)
+            custom_sort_text.insert(tk.END, custom_sort_content)
+
+            sort_by_frequency_button = tk.Button(custom_sort_window, text="Sort by Frequency", command=lambda: self.sort_by_frequency(custom_sort_text, custom_sort_file))
+            sort_by_frequency_button.pack(side=tk.RIGHT)
+
+            save_button = tk.Button(custom_sort_window, text="Save", command=lambda: self.save_custom_sort(custom_sort_file, custom_sort_text))
+            save_button.pack(side=tk.LEFT)
+
+            custom_sort_text.configure(bg=bg_color, fg=fg_color)
+            sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
+            save_button.configure(bg=bg_color, fg=fg_color)
+
+        else:
+            all_tags = self.load_all_tags()
+
+            custom_sort_window = tk.Toplevel(self.root)
+            custom_sort_window.title("Custom Tag Sort")
+
+            custom_sort_text = Text(custom_sort_window)
+            custom_sort_text.pack(fill=tk.BOTH, expand=True)
+            custom_sort_text.insert(tk.END, ", ".join(all_tags))
+
+            sort_by_frequency_button = tk.Button(custom_sort_window, text="Sort by Frequency", command=lambda: self.sort_by_frequency(custom_sort_text, custom_sort_file))
+            sort_by_frequency_button.pack(side=tk.RIGHT)
+
+            save_button = tk.Button(custom_sort_window, text="Save", command=lambda: self.save_custom_sort(custom_sort_file, custom_sort_text))
+            save_button.pack(side=tk.LEFT)
+
+            custom_sort_text.configure(bg=bg_color, fg=fg_color)
+            sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
+            save_button.configure(bg=bg_color, fg=fg_color)
+
+    def load_all_tags(self):
+        all_tags = set()
+        for txt_filename in os.listdir(self.source_directory):
+            if txt_filename.lower().endswith('.txt') and txt_filename != "custom_tag_sort.txt":
+                txt_path = os.path.join(self.source_directory, txt_filename)
+                with open(txt_path, 'r') as txt_file:
+                    tags = txt_file.read().split(',')
+                    for tag in tags:
+                        clean_tag = self.clean_tag(tag)
+                        if clean_tag:
+                            all_tags.add(clean_tag)
+        return sorted(all_tags)
+
+    def sort_by_frequency(self, custom_sort_text, custom_sort_file):
+        all_tags = self.load_all_tags()
+        tag_counts = {}
+        for tag in all_tags:
+            tag_counts[tag] = 0
+
+        for txt_filename in os.listdir(self.source_directory):
+            if txt_filename.lower().endswith('.txt') and txt_filename != "custom_tag_sort.txt":
+                txt_path = os.path.join(self.source_directory, txt_filename)
+                with open(txt_path, 'r') as txt_file:
+                    tags = txt_file.read().split(',')
+                    for tag in tags:
+                        clean_tag = self.clean_tag(tag)
+                        if clean_tag:
+                            tag_counts[clean_tag] += 1
+
+        sorted_tags = sorted(all_tags, key=lambda x: tag_counts[x], reverse=True)
+        custom_sort_text.delete(1.0, tk.END)
+        custom_sort_text.insert(tk.END, ", ".join(sorted_tags))
+
+    def save_custom_sort(self, custom_sort_file, custom_sort_text):
+        custom_sort_content = custom_sort_text.get(1.0, tk.END)
+        with open(custom_sort_file, 'w') as custom_sort_file:
+            custom_sort_file.write(custom_sort_content)
+
+    def sort_custom_tags(self):
+        custom_sort_file_path = os.path.join(self.source_directory, "custom_tag_sort.txt")
+
+        if os.path.exists(custom_sort_file_path):
+            with open(custom_sort_file_path, 'r') as custom_sort_file:
+                custom_sort_content = custom_sort_file.read()
+
+            custom_sorted_tags = [tag.strip() for tag in custom_sort_content.split(',')]
+
+            new_cells = []
+
+            for tag in custom_sorted_tags:
+                matching_cells = [cell for cell in self.cells if cell.text.lower() == tag.lower()]
+                if matching_cells:
+                    cell = matching_cells[0]
+                    new_cells.append(cell)
+                    self.cells.remove(cell)
+
+            new_cells.extend(self.cells)
+
+            self.cells = new_cells
+
+            for index, cell in enumerate(self.cells):
+                pass
+            self.rearrange_cells()
 
 if __name__ == "__main__":
     root = tk.Tk()
