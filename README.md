@@ -12,8 +12,8 @@ python dataprep.py<br>
 Run python scripts without console window by changing script type to "*.pyw"<br>
 
 Known Issues:<br>
--Editing the custom tag text file doesnt work correctly. But You can easily make your own! Just give it the same name, any tags used not in the custom sort will be placed at the end of the image tags text file.
-(I will work on making it work a little bit better, but this looks like something easily handled in a different text editor)
+-Editing the custom tag text file doesnt work correctly. But You can easily make your own! Just give it the same name, any tags used not in the custom sort will be placed at the end of the image tags text file.<br>
+(I will work on making it work a little bit better, but this looks like something easily handled in a different text editor)<br>
 -Sometimes glitches out in folders with 1 or 2 images. (I think I fixed that)<br>
 -Issues with multiple image file types.<br>
 -Need to add scroll bars to the cells/tags portion of the window. Making window larger fixes it for now.<br>
