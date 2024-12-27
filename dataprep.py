@@ -1,895 +1,407 @@
-import os
 import tkinter as tk
-from tkinter import ttk, Canvas, Text, Scrollbar, Menu, messagebox, filedialog
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
+from natsort import natsorted
+import natsort
+import os
 
-global img_dir, file_version
-img_dir = "./" # used for initial start up only.
-file_version = "2023.11.17.A"
-
-class Cell:
-    def __init__(self, master, text):
-        self.master = master
-        self.text = text
-        self.label = None
-        self.selected = False
-
-class ImageTextViewer:
-    def __init__(self, root):
+config = {
+    'input_dir': None,
+    'output_dir': "./",
+    'resize_image_limit': 1536,
+    'resize_image_delete_input_img': False,
+    'convert_image_type': "png",
+    'convert_image_delete_input_img': False,
+    'delete_moves_to_temp': True,
+    'displayed_image_maxsize': 512,
+    'initial_dir': "./",
+    'valid_img_types': ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+}
+class ImageViewer:
+    def __init__(self, root, config):
         self.root = root
-        self.root.title("SD Data Prep " + file_version)
+        self.config = config
+        self.root.title("Ski Dataprep v4")
 
-        self.options = {
-            "clean_tags": True,
-            "tag_columns": 4,
-            "style": "Black"
-        }
-        self.set_current_style()
-        self.root.pack_propagate(False)
+        self.version = "4.0.2"
+        self.last_update = "20241227"
+        
+        # Variables
+        self.image_list = []
+        self.current_image_index = -1
+        self.current_dir = None
+        self.text_data = []
+        self.text_file_path = ""
+        self.global_tags = {}  # Dictionary to store global tags and their counts
+        self.undo_img_tags_history = []
+        self.autocomplete_values = []  # List to hold autocomplete suggestions
+        
+        # Widgets
+        self.frame_buttons = tk.Frame(root)
+        self.btn_open_folder = tk.Button(self.frame_buttons, text="Open Folder", command=self.open_folder)
+        self.btn_prev = tk.Button(self.frame_buttons, text="Previous", command=self.show_previous)
+        self.btn_next = tk.Button(self.frame_buttons, text="Next", command=self.show_next)
+        self.dropdown_images = ttk.Combobox(self.frame_buttons, state='readonly')
+        self.dropdown_images.bind("<<ComboboxSelected>>", self.change_image)
 
-        self.top_frame = tk.Frame(root, relief="solid")
-        self.top_frame.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
+        self.frame_buttons.pack(pady=0)
+        self.btn_open_folder.pack(side=tk.LEFT, padx=0)
+        self.btn_prev.pack(side=tk.LEFT, padx=0)
+        self.btn_next.pack(side=tk.LEFT, padx=0)
+        self.dropdown_images.pack(side=tk.LEFT, padx=0)
 
-        self.source_directory = img_dir
+        self.frame_image = tk.Frame(root)
+        self.frame_image.pack(side=tk.LEFT, padx=0, pady=0)
+        self.frame_btn_image = tk.Frame(self.frame_image)
+        self.frame_btn_image.pack(side=tk.TOP, pady=0, expand=True)
+        self.btn_convert = tk.Button(self.frame_btn_image, text="Convert To PNG", command=self.click_convert_image)
+        self.btn_convert.pack(side=tk.LEFT, padx=0)
+        self.btn_shrink = tk.Button(self.frame_btn_image, text="Shrink Image", command=self.click_shrink_image)
+        self.btn_shrink.pack(side=tk.LEFT, padx=0)
 
-        if not os.path.exists(self.source_directory):
-            self.source_directory = "./"
+        self.frame_btn_img_res = tk.Frame(self.frame_btn_image)
+        self.frame_btn_img_res.pack(side=tk.BOTTOM, pady=0, expand=True)
+        self.label_resolution = tk.Label(self.frame_btn_img_res, text="", font=("Helvetica", 8))
+        self.label_resolution.pack(side=tk.TOP, pady=(5, 0))
+        self.label_resolution_new = tk.Label(self.frame_btn_img_res, text="", font=("Helvetica", 8))
+        self.label_resolution_new.pack(side=tk.BOTTOM, pady=(5, 0))
+        self.canvas = tk.Canvas(self.frame_image, width=self.config['displayed_image_maxsize'] + 5, height=self.config['displayed_image_maxsize'] + 5)
+        self.canvas.pack(side=tk.BOTTOM)
 
-        self.image_files = []
-        self.current_index = -1
-        self.tag_counts = {}
-        self.load_tags_from_files()
-        self.current_selected_cell = None
+        self.frame_text = tk.Frame(root)
+        self.frame_text.pack(side=tk.RIGHT, pady=0, fill=tk.BOTH, expand=True)
+        self.frame_btn_tags = tk.Frame(self.frame_text)
+        self.frame_btn_tags.pack(side=tk.TOP, pady=0, fill=tk.BOTH, expand=True)
 
-        if self.check_for_image_files(self.source_directory) < 2:
-            self.source_directory = "./"
-            self.min_tag_count = 0
-            self.max_tag_count = 1
+        self.frame_btn_tags_btns = tk.Frame(self.frame_btn_tags)
+        self.frame_btn_tags_btns.pack(side=tk.TOP, pady=0, fill=tk.X)
+        self.frame_btn_tags_btns_row1 = tk.Frame(self.frame_btn_tags_btns)
+        self.frame_btn_tags_btns_row1.pack(side=tk.TOP, pady=0, fill=tk.BOTH, expand=True)
+        self.frame_btn_tags_btns_row2 = tk.Frame(self.frame_btn_tags_btns)
+        self.frame_btn_tags_btns_row2.pack(side=tk.TOP, pady=0, fill=tk.BOTH, expand=True)
+        self.frame_btn_tags_btns_row3 = tk.Frame(self.frame_btn_tags_btns)
+        self.frame_btn_tags_btns_row3.pack(side=tk.TOP, pady=0, fill=tk.BOTH, expand=True)
+
+        self.entry_new_item = ttk.Combobox(self.frame_btn_tags_btns_row1, values=self.autocomplete_values)
+        self.entry_new_item.pack(side=tk.TOP, fill=tk.X)
+        self.entry_new_item.bind('<KeyRelease>', self.update_autocomplete)
+        # self.entry_new_item.bind('<KeyRelease-Up>', self.on_entry_click)
+
+        self.btn_save = tk.Button(self.frame_btn_tags_btns_row2, text="Save", command=self.save_txt_file)
+        self.btn_save.pack(side=tk.LEFT, padx=0)
+        self.btn_add = tk.Button(self.frame_btn_tags_btns_row2, text="Add Item", command=self.add_item)
+        self.btn_add.pack(side=tk.LEFT, padx=0)
+        self.btn_remove = tk.Button(self.frame_btn_tags_btns_row2, text="Remove Selected", command=self.remove_selected_items)
+        self.btn_remove.pack(side=tk.LEFT, padx=0)
+        self.btn_tag_move_up = tk.Button(self.frame_btn_tags_btns_row3, text="Move Up", command=self.move_item_up)
+        self.btn_tag_move_up.pack(side=tk.LEFT, padx=0)
+        self.btn_tag_move_down = tk.Button(self.frame_btn_tags_btns_row3, text="Move Down", command=self.move_item_down)
+        self.btn_tag_move_down.pack(side=tk.LEFT, padx=0)
+
+        self.frame_btn_tags_list = tk.Frame(self.frame_btn_tags)
+        self.frame_btn_tags_list.pack(side=tk.BOTTOM, pady=0, fill=tk.BOTH, expand=True)
+
+        min_width_chars = int(100 / 7) # min_width_pixels // avg_char_width
+        self.img_tag_listbox = tk.Listbox(self.frame_btn_tags_list, selectmode=tk.MULTIPLE, width=min_width_chars)
+        self.img_tag_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        img_tag_listbox_scrollbar = tk.Scrollbar(self.frame_btn_tags_list, orient=tk.VERTICAL, command=self.img_tag_listbox.yview)
+        img_tag_listbox_scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+        self.img_tag_listbox.config(yscrollcommand=img_tag_listbox_scrollbar.set)
+        self.img_tag_listbox.bind("<<ListboxSelect>>", self.on_img_tag_select)
+
+        self.global_tag_listbox = tk.Listbox(self.frame_btn_tags_list, selectmode=tk.MULTIPLE, width=min_width_chars)
+        self.global_tag_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        global_tag_listbox_scrollbar = tk.Scrollbar(self.frame_btn_tags_list, orient=tk.VERTICAL, command=self.global_tag_listbox.yview)
+        global_tag_listbox_scrollbar.pack(side=tk.LEFT, fill=tk.Y)
+        self.global_tag_listbox.config(yscrollcommand=global_tag_listbox_scrollbar.set)
+        self.global_tag_listbox.bind("<<ListboxSelect>>", self.on_global_tag_select)
+    def update_autocomplete(self, event=None):
+        value = self.entry_new_item.get().strip()
+        if value == '':
+            data = list(self.global_tags.keys())
         else:
-            self.min_tag_count = min(self.tag_counts.values())
-            self.max_tag_count = max(self.tag_counts.values())
-
-        self.output_directory = self.source_directory
-
-        self.slider = ttk.Scale(self.top_frame, from_=0, to=0, orient=tk.HORIZONTAL, length=400, command=self.slider_callback)
-        self.slider.pack(fill=tk.X)
-
-        self.help_button = tk.Button(self.top_frame, text="?", command=self.open_help_dialog)
-        self.help_button.pack(side=tk.RIGHT)
-
-        self.toggle_style_button = tk.Button(self.top_frame, text="*", command=self.toggle_style)
-        self.toggle_style_button.pack(side=tk.RIGHT)
-
-        self.prev_button = tk.Button(self.top_frame, text="Previous", command=self.load_previous)
-        self.prev_button.pack(side=tk.LEFT)
-
-        self.next_button = tk.Button(self.top_frame, text="Next", command=self.load_next)
-        self.next_button.pack(side=tk.LEFT)
-
-        self.set_custom_button = tk.Button(self.top_frame, text="Set Custom Tags", command=self.set_custom_tags)
-        self.set_custom_button.pack(side=tk.LEFT)
-
-        self.select_source_folder_button = tk.Button(self.top_frame, text="Select Source Folder", command=self.select_source_folder)
-        self.select_source_folder_button.pack(side=tk.RIGHT)
-
-        self.select_output_folder_button = tk.Button(self.top_frame, text="Select Output Folder", command=self.select_output_folder)
-        self.select_output_folder_button.pack(side=tk.RIGHT)
-
-        self.save_button = tk.Button(self.top_frame, text="Save TXT File", command=self.save_text)
-        self.save_button.pack(side=tk.RIGHT)
-
-        self.right_frame = tk.Frame(root)
-        self.right_frame.pack(side=tk.RIGHT, padx=0, pady=0)
-
-        self.image_label = tk.Label(self.right_frame)
-        self.image_label.pack()
-
-        self.text_frame = tk.Frame(root, relief="solid")
-        self.text_frame.pack(padx=0, pady=0, fill=tk.BOTH, expand=True)
-
-        self.top_tag_frame = tk.Frame(self.text_frame)
-        self.top_tag_frame.pack(side=tk.TOP, fill=tk.X)
-
-        self.image_name_label = tk.Label(self.top_tag_frame, text="Files: ")
-        self.image_name_label.pack(side=tk.TOP)
-
-        self.tag_dropdown_frame = tk.Frame(self.top_tag_frame)
-        self.tag_dropdown_frame.pack(side=tk.TOP, fill=tk.X)
-
-        self.freq_tag_label = tk.Label(self.tag_dropdown_frame, text="Add Tags: ")
-        self.freq_tag_label.grid(row=0, column=0)
-
-        self.tag_var = tk.StringVar(self.tag_dropdown_frame)
-        self.tag_dropdown = ttk.Combobox(self.tag_dropdown_frame, textvariable=self.tag_var)
-        self.update_tag_dropdown()
-        self.tag_dropdown.grid(row=0, column=1, sticky="ew")
-        self.tag_dropdown_frame.columnconfigure(1, weight=1)
-
-        self.add_tag_from_dropdown_button = tk.Button(self.tag_dropdown_frame, text="+", command=self.add_tag_from_dropdown)
-        self.add_tag_from_dropdown_button.grid(row=0, column=2)
-
-        self.sort_button = tk.Button(self.top_tag_frame, text="Sort Alphabetical", command=self.sort_cells)
-        self.sort_button.pack(side=tk.LEFT)
-
-        self.sort_by_frequency_button = tk.Button(self.top_tag_frame, text="Sort Frequency", command=self.sort_cells_by_frequency)
-        self.sort_by_frequency_button.pack(side=tk.LEFT)
-
-        self.sort_custom_button = tk.Button(self.top_tag_frame, text="Sort Custom", command=self.sort_custom_tags)
-        self.sort_custom_button.pack(side=tk.LEFT)
-
-        self.bottom_tag_frame = tk.Frame(self.text_frame, relief="solid")
-        self.bottom_tag_frame.pack(padx=0, pady=0, fill=tk.BOTH, expand=True)
-
-        self.bottom_tag_canvas = Canvas(self.bottom_tag_frame)
-        self.bottom_tag_scrollbar = Scrollbar(self.bottom_tag_frame, orient="vertical", command=self.bottom_tag_canvas.yview)
-        self.bottom_tag_canvas.configure(yscrollcommand=self.bottom_tag_scrollbar.set)
-
-        self.bottom_tag_canvas.pack(side="left", fill="both", expand=True)
-        self.bottom_tag_scrollbar.pack(side="right", fill="y")
-
-        self.tag_frame = tk.Frame(self.bottom_tag_canvas)
-        self.tag_frame.pack(fill="both", expand=True)
-
-        self.bottom_tag_canvas.create_window((0, 0), window=self.tag_frame, anchor="nw")
-        self.tag_frame.bind("<Configure>", self.on_tag_frame_configure)
-        root.bind("<Control-a>", self.select_all_cells)
-        root.bind("<Control-d>", self.deselect_all_cells)
-        root.bind("<Control-c>", self.copy_selected_tags_to_clipboard)
-
-        self.cells = []
-        self.apply_style()
-        self.load_images()
-        self.load_next()
-
-    def tag_dropdown_focus_out(self, event=None):
-        # Unselect the tag_dropdown when it loses focus (clicked outside)
-        self.image_name_label.focus_set()
-
-    def on_tag_frame_configure(self, event):
-        self.bottom_tag_canvas.configure(scrollregion=self.bottom_tag_canvas.bbox("all"))
-
-    def handle_left_click(self, event, cell):
-        self.tag_dropdown_focus_out()
-        if event.state & 0x4:  # Check if Ctrl is held
-            if cell.selected:
-                cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
-                cell.selected = False
-            else:
-                cell.label.config(relief="solid", borderwidth=2, bg="yellow")
-                cell.selected = True
-            self.current_selected_cell = cell
-            self.update_selected_tags()
-        else:
-            self.select_cell(cell)
-
-    def handle_right_click(self, event, cell):
-        self.tag_dropdown_focus_out()
-        self.show_popup(event, cell)
-
-    def select_cell(self, cell):
-        self.tag_dropdown_focus_out()
-        if not cell.selected:
-            for other_cell in self.cells:
-                if other_cell.selected:
-                    other_cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[other_cell.text]))
-                    other_cell.selected = False
-            cell.label.config(relief="solid", borderwidth=2, bg="yellow")
-            cell.selected = True
-            self.current_selected_cell = cell
-        else:
-            cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
-            cell.selected = False
-
-        self.update_selected_tags()
-
-    def update_selected_tags(self):
-        selected_cells = [selected_cell.text for selected_cell in self.cells if selected_cell.selected]
-        selected_cells_text = ", ".join(selected_cells)
-        self.tag_var.set(selected_cells_text)
-
-    def add_tag_from_dropdown(self):
-        tag_text = self.tag_var.get()
-        tag_text = tag_text.rsplit(" - ")[-1]
-
-        tags = tag_text.split(',')
-        for tag in tags:
-            tag = tag.strip()
-            if tag and not self.tag_exists_in_cells(tag):
-                self.add_cell(tag)
-
-                # Update tag_counts dictionary
-                if tag in self.tag_counts:
-                    self.tag_counts[tag] += 1
-                else:
-                    self.tag_counts[tag] = 1
-
-        self.tag_var.set("")
-        self.update_tag_dropdown()
-
-    def save_text(self):
-        if self.image_files and 0 <= self.current_index < len(self.image_files):
-            image_filename = self.image_files[self.current_index]
-            txt_filename = os.path.splitext(image_filename)[0] + ".txt"
-
-            image_path = os.path.join(self.source_directory, image_filename)
-            txt_path = os.path.join(self.source_directory, txt_filename)
-
-            new_image_path = os.path.join(self.output_directory, image_filename)
-            new_txt_path = os.path.join(self.output_directory, txt_filename)
-
-            tags = [cell.text for cell in self.cells]
-            image_text = ", ".join(tags)
-
-            with open(new_txt_path, 'w') as txt_file:
-                txt_file.write(image_text)
-
-            if image_path != new_image_path:
-                with open(image_path, 'rb') as src_image_file:
-                    with open(new_image_path, 'wb') as dest_image_file:
-                        dest_image_file.write(src_image_file.read())
-        self.reload_tags_from_files()
-
-    def select_source_folder(self):
-        selected_folder = filedialog.askdirectory()
-        if selected_folder:
-            self.source_directory = selected_folder
-            self.load_images()
-            self.current_index = -1
-            self.load_next()
-
-        self.image_files = []
-        self.current_index = -1
-        self.tag_counts = {}
-        self.load_tags_from_files()
-
-        if not self.check_for_image_files(self.source_directory):
-            self.min_tag_count = 0
-            self.max_tag_count = 1
-        else:
-            self.min_tag_count = min(self.tag_counts.values())
-            self.max_tag_count = max(self.tag_counts.values())
-
-        self.update_tag_dropdown()
-        for cell in self.cells:
-            cell.label.destroy()
-        self.cells.clear()
-        self.load_images()
-        self.load_next()
-
-        self.select_output_folder(True)
-        self.set_output_dir_color()
-
-    def set_output_dir_color(self): #makes output dir button have red or black text
-        if self.output_directory != self.source_directory:
-            self.select_output_folder_button.config(fg="red")
-            self.select_source_folder_button.configure(fg="red")
-        else:
-            self.select_output_folder_button.config(fg="green")
-            self.select_source_folder_button.configure(fg="green")
-
-    def select_output_folder(self, override=False):
-        if not override:
-            selected_output_folder = filedialog.askdirectory()
-            if selected_output_folder:
-                self.output_directory = selected_output_folder
-        else:
-            self.output_directory = self.source_directory
-        self.set_output_dir_color()
-
-    def load_images(self):
-        self.image_files = [file for file in os.listdir(self.source_directory) if file.lower().endswith(('.jpg', '.png', '.jpeg', '.webp'))]
-        self.slider.config(to=len(self.image_files) - 1)
-
-    def check_for_image_files(self, directory):
-        image_extensions = ('.jpg', '.png', '.jpeg', '.webp')
-        files = os.listdir(directory)
-        image_files = [file for file in files if file.lower().endswith(image_extensions)]
-        return len(image_files)
-
-    def load_next(self):
-        if self.image_files:
-            self.save_text()
-            self.current_index = (self.current_index + 1) % len(self.image_files)
-            self.load_image_and_text()
-            self.load_cells()
-        self.reload_tags_from_files()
-
-    def load_previous(self):
-        if self.image_files:
-            self.save_text()
-            self.current_index = (self.current_index - 1) % len(self.image_files)
-            self.load_image_and_text()
-            self.load_cells()
-        self.reload_tags_from_files()
-
-    def slider_callback(self, value):
-        if self.image_files:
-            new_index = int(round(float(value)))
-            if new_index != self.current_index:
-                self.save_text()
-                self.current_index = new_index
-                self.load_image_and_text()
-                self.load_cells()
-
-    def load_image_and_text(self):
-        if self.image_files:
-            image_filename = self.image_files[self.current_index]
-            self.image_name_label.config(text="Image: " + image_filename)
-            image_path = os.path.join(self.source_directory, image_filename)
-            txt_filename = os.path.splitext(image_filename)[0] + ".txt"
-            txt_path = os.path.join(self.source_directory, txt_filename)
-
-            if os.path.exists(txt_path):
-                with open(txt_path, 'r') as txt_file:
-                    image_text = txt_file.read()
-            else:
-                image_text = "No text file exists for this image."
-
-            image = Image.open(image_path)
-            aspect_ratio = image.width / image.height
-            new_width = 400
-            new_height = int(new_width / aspect_ratio)
-            image.thumbnail((new_width, new_height))
-
-            photo = ImageTk.PhotoImage(image)
-            self.image_label.config(image=photo)
-            self.image_label.image = photo
-
-            self.slider.set(self.current_index)
-
-        else:
-            self.image_name_label.config(text="Image: ")
-            self.image_label.config(image=None)
-            self.slider.set(0)
-
-    def show_popup(self, event, cell):
-        self.current_selected_cell = cell
-        popup_menu = Menu(self.bottom_tag_frame, tearoff=0)
-        popup_menu.add_command(label="Move Up", command=lambda: self.move_cell_up(cell))
-        popup_menu.add_command(label="Move Down", command=lambda: self.move_cell_down(cell))
-        popup_menu.add_command(label="Move to Front", command=lambda: self.move_cell_to_front(cell))
-        popup_menu.add_command(label="Move to Back", command=lambda: self.move_cell_to_back(cell))
-        popup_menu.add_separator()
-        popup_menu.add_command(label="Swap Spaces and Underscores", command=lambda: self.swap_spaces_underscores_selected_cells())
-        popup_menu.add_command(label="Change Case", command=lambda: self.change_case_selected_cells())
-        popup_menu.add_command(label="Split Words into New Tags", command=lambda: self.split_tags_into_new_tags())
-        popup_menu.add_separator()
-        popup_menu.add_command(label="Select All", command=lambda: self.select_all_cells())
-        popup_menu.add_command(label="Deselect All", command=lambda: self.deselect_all_cells())
-        popup_menu.add_command(label="Copy Tags", command=lambda: self.copy_selected_tags_to_clipboard())
-        popup_menu.add_separator()
-        popup_menu.add_command(label="Delete", command=lambda: self.delete_cell(cell))
-        popup_menu.add_command(label="Delete All", command=lambda: self.delete_cell_all(cell))
-
-        popup_menu.tk_popup(event.x_root, event.y_root)
-
-    def copy_selected_tags_to_clipboard(self, event=None):
-        self.tag_dropdown_focus_out()
-        selected_tags = [cell.text for cell in self.cells if cell.selected]
-        formatted_tags = ', '.join(selected_tags)
-
-        self.root.clipboard_clear()
-        self.root.clipboard_append(formatted_tags)
-        self.root.update()
-        self.update_selected_tags()
-
-    def select_all_cells(self, event=None):
-        self.tag_dropdown_focus_out()
-        for cell in self.cells:
-            cell.label.config(relief="solid", borderwidth=2, bg="yellow")
-            cell.selected = True
-        self.update_selected_tags()
-
-    def deselect_all_cells(self, event=None):
-        self.tag_dropdown_focus_out()
-        for cell in self.cells:
-            cell.label.config(relief="solid", borderwidth=1, bg=self.calculate_color(self.tag_counts[cell.text]))
-            cell.selected = False
-        self.update_selected_tags()
-
-    def move_cell_up(self, this_cell):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        last = 0
-        if selected_cells and len(selected_cells) > 1:
-            for cell in selected_cells:
-                index = self.cells.index(cell)
-                last = index
-                if index > 0 and last+1 < index:
-                    self.cells.pop(index)
-                    self.cells.insert(index - 1, cell)
-        else:
-            index = self.cells.index(this_cell)
+            # new_items = value.split(',')
+            # value = new_items[-1].strip().lower()
+            data = [item for item in self.global_tags.keys() if value in item.lower()]
+        self.entry_new_item['values'] = data
+    def move_item_up(self):
+        selected_indices = self.img_tag_listbox.curselection()
+        selected_items = []
+        if not selected_indices:
+            return
+        for index in selected_indices:
+            selected_items.append(self.img_tag_listbox.get(index))
+        for index in selected_indices:
             if index > 0:
-                index = self.cells.index(this_cell)
-                self.cells.pop(index)
-                self.cells.insert(index - 1, this_cell)
-        self.rearrange_cells()
+                value = self.img_tag_listbox.get(index)
+                value_next = self.img_tag_listbox.get(index - 1)
+                if value_next not in selected_items:
+                    self.img_tag_listbox.delete(index)
+                    self.img_tag_listbox.insert(index - 1, value)
+                    self.img_tag_listbox.selection_set(index - 1)
+        self.add_undo_img_tags_history(self.img_tag_listbox)
+    def move_item_down(self):
+        selected_indices = self.img_tag_listbox.curselection()
+        selected_items = []
+        if not selected_indices:
+            return
+        for index in selected_indices:
+            selected_items.append(self.img_tag_listbox.get(index))
+        for index in selected_indices:
+            if index < self.img_tag_listbox.size() - 1:
+                value = self.img_tag_listbox.get(index)
+                value_next = self.img_tag_listbox.get(index + 1)
+                if value_next not in selected_items:
+                    self.img_tag_listbox.delete(index)
+                    self.img_tag_listbox.insert(index + 1, value)
+                    self.img_tag_listbox.selection_set(index + 1)
+        self.add_undo_img_tags_history(self.img_tag_listbox)
+    def on_img_tag_select(self, event):
+        selected_indices = self.img_tag_listbox.curselection()
+        if not selected_indices:
+            return
+        self.clear_selection(self.global_tag_listbox)
+        selected_items = [self.img_tag_listbox.get(idx) for idx in selected_indices]
+        self.populate_entry(selected_items)
+    def on_global_tag_select(self, event):
+        self.clear_selection(self.img_tag_listbox)
+        selected_indices = self.global_tag_listbox.curselection()
+        selected_items = [self.remove_count_from_tag(self.global_tag_listbox.get(idx)) for idx in selected_indices]
+        self.populate_entry(selected_items)
+    def clear_selection(self, listbox):
+        listbox.selection_clear(0, tk.END)
+    def populate_entry(self, items):
+        self.entry_new_item.delete(0, tk.END)
+        self.entry_new_item.insert(0, ', '.join(items))
+    def remove_count_from_tag(self, tag):
+        return tag.split(' - ')[-1]
+    def round_to_nearest_64(self, value):
+        return (value + 32) // 64 * 64
+    def click_convert_image(self):
+        print("WARNING: Manually setting file type(PNG).")
+        self.convert_image(self.image_list[self.current_image_index], "png")
+    def convert_image(self, output_path, file_type_out="png", delete_old=False, input_path=None):
+        img_path = output_path
+        if input_path:
+            img_path = input_path
+        with Image.open(img_path) as img:
+            file_type_in = os.path.splitext(output_path)[1]
+            output_path_png = os.path.splitext(output_path)[0] + '.' + file_type_out
+            img.save(output_path_png, file_type_out)
+            print(f"Converted and resized {img_path} from {file_type_in} to {file_type_out}")
+            if self.config['convert_image_delete_input_img']:
+                self.delete_file(input_path)
+    def get_new_resolution(self, max_dimension, original_width, original_height):
+        reduced_width = original_width
+        reduced_height = original_height
 
-    def move_cell_down(self, this_cell):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if selected_cells and len(selected_cells) > 1:
-            for cell in selected_cells:
-                index = self.cells.index(cell)
-                if index < len(self.cells) - 1:
-                    self.cells.pop(index)
-                    self.cells.insert(index + len(selected_cells), cell)
+        if original_width > max_dimension or original_height > max_dimension:
+            if original_width / original_height > 1:  # Landscape orientation
+                reduced_width = max_dimension
+                reduced_height = int(original_height * (max_dimension / original_width))
+            else:  # Portrait or square orientation
+                reduced_height = max_dimension
+                reduced_width = int(original_width * (max_dimension / original_height))
         else:
-            index = self.cells.index(this_cell)
-            if index < len(self.cells) - 1:
-                index = self.cells.index(this_cell)
-                self.cells.pop(index)
-                self.cells.insert(index + 1, this_cell)
-        self.rearrange_cells()
+            reduced_width, reduced_height = original_width, original_height
 
-    def move_cell_to_front(self, this_cell):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        mov_cnt = 0
-        if selected_cells:
-            for cell in selected_cells:
-                self.cells.remove(cell)
-                self.cells.insert(mov_cnt, cell)
-                mov_cnt += 1
-        else:
-            self.cells.remove(this_cell)
-            self.cells.insert(0, this_cell)
-        self.rearrange_cells()
+        new_width = self.round_to_nearest_64(reduced_width)
+        new_height = self.round_to_nearest_64(reduced_height)
 
-    def move_cell_to_back(self, this_cell):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if selected_cells:
-            for cell in selected_cells:
-                self.cells.remove(cell)
-                self.cells.append(cell)
-        else:
-            self.cells.remove(this_cell)
-            self.cells.append(this_cell)
-        self.rearrange_cells()
+        return (new_width, new_height)
+    def click_shrink_image(self):
+        #print("Current Image:", self.image_list[self.current_image_index])
+        print("WARNING: Manually setting resolution max.")
+        self.shrink_image(self.image_list[self.current_image_index], 1536)
+    def shrink_image(self, output_path, resize=1536, input_path=None):
+        img_path = output_path
+        if input_path:
+            img_path = input_path
+        with Image.open(img_path) as img:
+            original_width, original_height = img.size
 
-    def swap_spaces_underscores_selected_cells(self):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if not selected_cells:
-            selected_cells = [self.current_selected_cell]
+            (new_width, new_height) = self.get_new_resolution(resize, original_width, original_height)
 
-        replace = "False"
-        if "_" in selected_cells[0].text:
-            replace = "space"
-        elif " " in selected_cells[0].text:
-            replace = "underscores"
-        else:
-            replace = "False"
-
-        for cell in selected_cells:
-            new_text = cell.text
-            if replace == "space":
-                new_text = cell.text.replace('_', ' ')
-            elif replace == "underscores":
-                new_text = cell.text.replace(' ', '_')
+            resized_img = img
+            if original_width != new_width or original_height != new_height:
+                resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+                resized_img.save(output_path)
+                print(f"Resized {img_path} from {original_width}x{original_height} to {new_width}x{new_height}")
             else:
-                new_text = new_text
-
-            if cell.text in self.tag_counts:
-                self.tag_counts[cell.text] -= 1
-
-            cell.text = new_text
-            cell.label.config(text=new_text)
-
-            if new_text in self.tag_counts:
-                self.tag_counts[new_text] += 1
-            else:
-                self.tag_counts[new_text] = 1
-
-        self.update_selected_tags()
-
-    def change_case_selected_cells(self):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if not selected_cells:
-            selected_cells = [self.current_selected_cell]
-
-        first_cell_text = selected_cells[0].text
-        if first_cell_text.islower():
-            change_function = str.title
+                print(f"No resizing needed for {img_path}: already at {original_width}x{original_height}")
+            if self.config['resize_image_delete_input_img']:
+                if input_path != output_path:
+                    self.delete_file(input_path)
+        self.load_image_and_text()
+    def delete_file(self, file_path):
+        if not self.config['delete_moves_to_temp']:
+            # os.remove(file_path)
+            print(f"(Pretending to) Deleted {file_path}")
         else:
-            change_function = str.lower
+            print(f"Failed to delete {file_path} due to global settings.")
+            print("TODO: Move file to a safe location instead of deleting.")
+    def open_folder(self):
+        if not self.current_dir:
+            self.current_dir = self.config['initial_dir']
+        if not os.path.exists(self.current_dir):
+            self.current_dir = os.getcwd()
 
-        for cell in selected_cells:
-            new_text = change_function(cell.text)
-            if cell.text in self.tag_counts:
-                self.tag_counts[cell.text] -= 1
-            cell.text = new_text
-            cell.label.config(text=new_text)
-            if new_text in self.tag_counts:
-                self.tag_counts[new_text] += 1
-            else:
-                self.tag_counts[new_text] = 1
-        self.update_selected_tags()
+        folder_path = filedialog.askdirectory(initialdir=self.current_dir)
+        if not folder_path:
+            return
+        self.current_dir = folder_path
 
-    def split_tags_into_new_tags(self):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if not selected_cells:
-            selected_cells = [self.current_selected_cell]
+        self.image_list = []
+        self.global_tags.clear()  # Clear the global tags dictionary before loading a new folder
 
-        for cell in selected_cells:
-            words = cell.text.split()
-            if cell.text in self.tag_counts:
-                self.tag_counts[cell.text] -= 1
-            for word in words:
-                cleaned_word = self.clean_tag(word)
-                if cleaned_word in self.tag_counts:
-                    self.tag_counts[cleaned_word] += 1
-                else:
-                    self.tag_counts[cleaned_word] = 1
-                self.add_cell(cleaned_word)
-            self.delete_cell(cell)  # Request delete original cell(s) after splitting words
-        self.reload_tags_from_files()
-        self.update_selected_tags()
-        self.rearrange_cells()
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith(self.config['valid_img_types']):
+                image_path = os.path.join(folder_path, filename)
+                self.image_list.append(image_path)
+            elif filename.lower().endswith('.txt'):
+                txt_path = os.path.join(folder_path, filename)
+                with open(txt_path, 'r') as file:
+                    tags = [tag.strip() for tag in file.read().split(',')]
+                    for tag in tags:
+                        if tag in self.global_tags:
+                            self.global_tags[tag] += 1
+                        else:
+                            self.global_tags[tag] = 1
 
-    def sort_cells(self):
-        self.cells.sort(key=lambda cell: cell.text.lower())
-        self.rearrange_cells()
+        if not self.image_list:
+            messagebox.showinfo("No Images", "No image files found in the selected folder.")
+            return
+        # Sort the list of filenames alphabetically
+        # self.dropdown_images['values'] = sorted([os.path.basename(img) for img in self.image_list])
+        
+        self.image_list = natsorted(self.image_list)
+        self.dropdown_images['values'] = natsorted([os.path.basename(img) for img in self.image_list])
 
-    def sort_cells_by_frequency(self):
-        sorted_tags_by_frequency = sorted(self.tag_counts.keys(), key=lambda tag: self.tag_counts[tag], reverse=True)
-        self.cells.sort(key=lambda cell: sorted_tags_by_frequency.index(cell.text))
-        self.rearrange_cells()
+        self.current_image_index = 0
+        self.load_image_and_text()
+        self.update_global_tag_listbox()
+    def update_global_tag_listbox(self):
+        self.global_tag_listbox.delete(0, tk.END)
+        for tag, count in sorted(self.global_tags.items(), key=lambda item: (-item[1], item[0])):
+            self.global_tag_listbox.insert(tk.END, f"{count} - {tag}")
+    def load_image_and_text(self):
+        if self.current_image_index < 0 or self.current_image_index >= len(self.image_list):
+            return
 
-    def add_cell(self, text):
-        if not self.tag_exists_in_cells(text):
-            new_cell = Cell(self.tag_frame, text)
-            new_cell.label = tk.Label(new_cell.master, text=text, relief="solid", borderwidth=1)
+        # Load and display image
+        image_path = self.image_list[self.current_image_index]
+        image = Image.open(image_path)
 
-            if text in self.tag_counts:
-                self.tag_counts[text] += 1
-            else:
-                self.tag_counts[text] = 1
+        # Display the resolution of the original image
+        original_width, original_height = image.size
+        self.label_resolution.config(text=f"{original_width}x{original_height}")
+        print("WARNING: Manually setting resolution max.")
+        (new_width, new_height) = self.get_new_resolution(1536, original_width, original_height)
+        self.label_resolution_new.config(text=f"{new_width}x{new_height}")
 
-            tag_frequency = self.tag_counts[text]
-            color = self.calculate_color(tag_frequency)
-            new_cell.label.config(bg=color, fg="black")
+        max_size = (self.config['displayed_image_maxsize'], self.config['displayed_image_maxsize'])
+        image.thumbnail(max_size, Image.LANCZOS)  # Scale down while maintaining aspect ratio
+        photo = ImageTk.PhotoImage(image)
+        self.canvas.create_image(0, 0, image=photo, anchor=tk.NW)
+        self.canvas.image = photo
 
-            new_cell.label.grid(row=len(self.cells) // self.cols, column=len(self.cells) % self.cols, padx=2, pady=2)
-            new_cell.label.bind("<Button-1>", lambda event, cell=new_cell: self.handle_left_click(event, cell))
-            new_cell.label.bind("<Button-3>", lambda event, cell=new_cell: self.handle_right_click(event, cell))
-            self.cells.append(new_cell)
+        # Update dropdown menu
+        self.dropdown_images.set(os.path.basename(image_path))
 
-    def tag_exists_in_cells(self, text):
-        for cell in self.cells:
-            if cell.text == text:
-                return True
-        return False
+        # Load associated text file
+        txt_path = os.path.splitext(image_path)[0] + '.txt'
+        self.text_file_path = txt_path
+        self.text_data = []
+        if os.path.exists(txt_path):
+            with open(txt_path, 'r') as file:
+                self.text_data = [line.strip() for line in file.read().split(',')]
 
-    def calculate_color(self, frequency):
-        normalized_value = (frequency - self.min_tag_count) / max((self.max_tag_count - self.min_tag_count),1)
+        # Update listbox
+        self.img_tag_listbox.delete(0, tk.END)
+        for item in self.text_data:
+            self.img_tag_listbox.insert(tk.END, item)
+    def show_previous(self):
+        if self.current_image_index > 0:
+            self.current_image_index -= 1
+            self.load_image_and_text()
+    def show_next(self):
+        if self. current_image_index < len(self.image_list) - 1:
+            self.current_image_index += 1
+            self.load_image_and_text()
+    def change_image(self, event):
+        selected_image_base = self.dropdown_images.get()
+        if not selected_image_base:
+            return
 
-        red = int(255 * (1 - normalized_value))
-        green = int(200 * normalized_value)
-        blue = 0
+        # Find the full path in image_list that matches the base name
+        try:
+            self.current_image_index = next(i for i, img_path in enumerate(self.image_list) if os.path.basename(img_path) == selected_image_base)
+        except StopIteration:
+            print("selected_image_base", selected_image_base)
+            print("self.current_image_index", self.current_image_index)
+            messagebox.showerror("Error", "Selected image not found.")
+            return
 
-        if frequency <= 2:
-            red = 255
-            green = 255
-            blue = 255
+        self.load_image_and_text()
+    def add_item(self):
+        new_items = self.entry_new_item.get().strip().split(',')
+        added_items = []
+        for new_item in new_items:
+            new_item = new_item.strip()
+            if new_item and new_item not in self.text_data:
+                self.text_data.append(new_item)
+                self.img_tag_listbox.insert(tk.END, new_item)
+                added_items.append(new_item)
+        #self.entry_new_item.delete(0, tk.END)
+        self.add_undo_img_tags_history(self.img_tag_listbox)
+        self.update_global_tags()  # Update global tags after adding items
+    def remove_selected_items(self):
+        selected_indices = sorted(self.img_tag_listbox.curselection(), reverse=True)
+        for index in selected_indices:
+            del self.text_data[index]
+            self.img_tag_listbox.delete(index)
+        self.add_undo_img_tags_history(self.img_tag_listbox)
+        self.update_global_tags()  # Update global tags after removing items
+    def update_global_tags(self):
+        # Clear the global tags dictionary
+        self.global_tags.clear()
 
-        red = max(0, min(255, red))
-        green = max(0, min(255, green))
-
-        color_code = "#{:02X}{:02X}{:02X}".format(red, green, blue)
-        return color_code
-
-    def delete_cell(self, this_cell):
-        selected_cells = [cell for cell in self.cells if cell.selected]
-        if selected_cells and len(selected_cells) > 1:
-            confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete these cell?")
-            if confirm:
-                for cell in selected_cells:
-                    cell.label.destroy()
-                    self.cells.remove(cell)
-        else:
-            confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete this cell?")
-            if confirm:
-                this_cell.label.destroy()
-                self.cells.remove(this_cell)
-        self.rearrange_cells()
-
-    def delete_cell_all(self, cell):
-        confirm = messagebox.askyesno("Confirmation", "Are you sure you want to delete all cells?")
-        if confirm:
-            for cell in self.cells:
-                cell.label.destroy()
-            self.cells.clear()
-
-    def rearrange_cells(self):
-        for idx, cell in enumerate(self.cells):
-            row = idx // self.cols
-            col = idx % self.cols
-            cell.label.grid(row=row, column=col, padx=1, pady=1)
-
-    def load_cells(self):
-        self.tag_dropdown_focus_out()
-        self.cols = self.options["tag_columns"]
-        for cell in self.cells:
-            cell.label.destroy()
-        self.cells.clear()
-
-        if self.image_files:
-            txt_filename = os.path.splitext(self.image_files[self.current_index])[0] + ".txt"
-            txt_path = os.path.join(self.source_directory, txt_filename)
-
+        # Iterate over all text files and update the global tags
+        for img_path in self.image_list:
+            txt_path = os.path.splitext(img_path)[0] + '.txt'
             if os.path.exists(txt_path):
-                with open(txt_path, 'r') as txt_file:
-                    lines = txt_file.readlines()
-                    for line in lines:
-                        line = line.strip()
-                        if line:
-                            items = line.split(',')
-                            for item in items:
-                                item = self.clean_tag(item)
-                                self.add_cell(item.strip())
-
-    def load_tags_from_files(self):
-        for txt_filename in os.listdir(self.source_directory):
-            if txt_filename.lower().endswith('.txt'):
-                txt_path = os.path.join(self.source_directory, txt_filename)
-                with open(txt_path, 'r') as txt_file:
-                    tags = txt_file.read().split(',')
+                with open(txt_path, 'r') as file:
+                    tags = [tag.strip() for tag in file.read().split(',')]
                     for tag in tags:
-                        clean_tag = self.clean_tag(tag)
-                        if clean_tag:
-                            if clean_tag in self.tag_counts:
-                                self.tag_counts[clean_tag] += 1
-                            else:
-                                self.tag_counts[clean_tag] = 1
+                        if tag in self.global_tags:
+                            self.global_tags[tag] += 1
+                        else:
+                            self.global_tags[tag] = 1
+        #Autosave the current list.
+        self.save_txt_file()
+        # Update the global tag listbox
+        self.update_global_tag_listbox()
+    def save_txt_file(self):
+        if not self.text_file_path:
+            return
 
-    def clean_tag(self, tag):
-        if(self.options["clean_tags"] == True):
+        # Retrieve the current order of tags from the img_tag_listbox
+        tags_to_save = ','.join(self.img_tag_listbox.get(0, tk.END))
 
-            clean_tag = tag.strip()
-            clean_tag = clean_tag.replace("Prompt: ", "")
-            clean_tag = clean_tag.replace(":", "")
-            clean_tag = clean_tag.replace("(", "")
-            clean_tag = clean_tag.replace(")", "")
-            clean_tag = clean_tag.replace("{", "")
-            clean_tag = clean_tag.replace("}", "")
-            clean_tag = clean_tag.replace("+", "")
-        return(clean_tag)
-
-    def update_tag_dropdown(self):
-        sorted_tags = sorted(self.tag_counts.keys(), key=lambda tag: self.tag_counts[tag], reverse=True)
-        tag_with_count = [f"{self.tag_counts[tag]} - {tag}" for tag in sorted_tags]
-        self.tag_dropdown['values'] = tag_with_count
-
-        self.tag_dropdown.bind("<Return>", lambda event: self.add_tag_from_dropdown())
-
-    def reload_tags_from_files(self):
-        self.tag_counts = {}
-
-        self.load_tags_from_files()
-        self.update_tag_dropdown()
-
-    def open_help_dialog(self):
-        help_image_path = "help.webp"
-        if os.path.exists(help_image_path):
-            help_image = Image.open(help_image_path)
-            help_image.thumbnail((800, 600))
-            help_image = ImageTk.PhotoImage(help_image)
-
-            help_message = tk.Toplevel(self.root)
-            help_message.title("Help")
-
-            help_label = tk.Label(help_message, image=help_image)
-            help_label.image = help_image
-            help_label.pack()
-
-            ok_button = tk.Button(help_message, text="OK", command=help_message.destroy)
-            ok_button.pack()
-        else:
-            messagebox.showerror("Error", "Help image not found!")
-
-    def toggle_style(self):
-        if self.options["style"] == "Normal":
-            self.options["style"] = "Black"
-        else:
-            self.options["style"] = "Normal"
-        self.set_current_style()
-        self.apply_style()
-
-    def apply_style(self):
-        bg_color = self.style["bg_color"]
-        fg_color = self.style["fg_color"]
-
-        self.root.configure(bg=bg_color)
-        self.top_frame.configure(bg=bg_color)
-        self.text_frame.configure(bg=bg_color)
-        self.top_tag_frame.configure(bg=bg_color)
-        self.tag_dropdown_frame.configure(bg=bg_color)
-        self.bottom_tag_frame.configure(bg=bg_color)
-        self.tag_frame.configure(bg=bg_color)
-        self.bottom_tag_canvas.configure(bg=bg_color)
-
-        style = ttk.Style()
-        style.configure("TScale", background=bg_color, troughcolor=bg_color, sliderbackground=fg_color)
-
-        self.toggle_style_button.configure(bg=bg_color, fg=fg_color)
-        self.help_button.configure(bg=bg_color, fg=fg_color)
-        self.prev_button.configure(bg=bg_color, fg=fg_color)
-        self.next_button.configure(bg=bg_color, fg=fg_color)
-        self.set_custom_button.configure(bg=bg_color, fg=fg_color)
-        self.select_source_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
-        self.select_output_folder_button.configure(bg=self.style["btn_bg_color"], fg=self.style["btn_fg_color"])
-        self.save_button.configure(bg=bg_color, fg=fg_color)
-        self.image_label.configure(bg=bg_color, fg=fg_color)
-        self.image_name_label.configure(bg=bg_color, fg=fg_color)
-        self.freq_tag_label.configure(bg=bg_color, fg=fg_color)
-        #self.tag_var.configure(bg=bg_color, fg=fg_color)
-        #self.tag_dropdown.configure(bg=bg_color, fg=fg_color)
-        self.add_tag_from_dropdown_button.configure(bg=bg_color, fg=fg_color)
-        self.sort_button.configure(bg=bg_color, fg=fg_color)
-        self.sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
-        self.sort_custom_button.configure(bg=bg_color, fg=fg_color)
-        self.bottom_tag_canvas.configure(bg=bg_color)
-
-        self.set_output_dir_color()
-        self.update_cell_style()
-
-    def update_cell_style(self):
-        for cell in self.cells:
-            if cell.selected:
-                cell.label.config(relief="solid", borderwidth=2, bg="yellow", fg="black")
-            else:
-                tag_frequency = self.tag_counts[cell.text]
-                cell.label.configure(bg=self.calculate_color(self.tag_counts[cell.text]), fg="black")
-
-    def set_current_style(self):
-        style = self.options["style"]
-        if style == "White":
-            self.style = {
-                "bg_color": "white",
-                "fg_color": "black",
-                "btn_bg_color": "white",
-                "btn_fg_color": "black"
-            }
-        elif style == "Black":
-            self.style = {
-                "bg_color": "black",
-                "fg_color": "white",
-                "btn_bg_color": "black",
-                "btn_fg_color": "white"
-            }
-        elif style == "Dark":
-            self.style = {
-                "bg_color": "darkgrey",
-                "fg_color": "white",
-                "btn_bg_color": "darkgrey",
-                "btn_fg_color": "white"
-            }
-        elif style == "Normal":
-            self.style = {
-                "bg_color": "lightgrey",
-                "fg_color": "black",
-                "btn_bg_color": "SystemButtonFace",
-                "btn_fg_color": "black"
-            }
-        else:
-            self.style = {
-                "bg_color": "lightgrey",
-                "fg_color": "black",
-                "btn_bg_color": "lightgrey",
-                "btn_fg_color": "black"
-            }
-
-    def set_custom_tags(self):
-        custom_sort_file = os.path.join(self.source_directory, "custom_tag_sort.txt")
-
-        bg_color = self.style["bg_color"]
-        fg_color = self.style["fg_color"]
-
-        if os.path.exists(custom_sort_file):
-            with open(custom_sort_file, 'r') as custom_sort_file:
-                custom_sort_content = custom_sort_file.read()
-
-            custom_sort_window = tk.Toplevel(self.root)
-            custom_sort_window.title("Custom Tag Sort")
-
-            custom_sort_text = Text(custom_sort_window)
-            custom_sort_text.pack(fill=tk.BOTH, expand=True)
-            custom_sort_text.insert(tk.END, custom_sort_content)
-
-            sort_by_frequency_button = tk.Button(custom_sort_window, text="Sort by Frequency", command=lambda: self.sort_by_frequency(custom_sort_text, custom_sort_file))
-            sort_by_frequency_button.pack(side=tk.RIGHT)
-
-            save_button = tk.Button(custom_sort_window, text="Save", command=lambda: self.save_custom_sort(custom_sort_file, custom_sort_text))
-            save_button.pack(side=tk.LEFT)
-
-            custom_sort_text.configure(bg=bg_color, fg=fg_color)
-            sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
-            save_button.configure(bg=bg_color, fg=fg_color)
-
-        else:
-            all_tags = self.load_all_tags()
-
-            custom_sort_window = tk.Toplevel(self.root)
-            custom_sort_window.title("Custom Tag Sort")
-
-            custom_sort_text = Text(custom_sort_window)
-            custom_sort_text.pack(fill=tk.BOTH, expand=True)
-            custom_sort_text.insert(tk.END, ", ".join(all_tags))
-
-            sort_by_frequency_button = tk.Button(custom_sort_window, text="Sort by Frequency", command=lambda: self.sort_by_frequency(custom_sort_text, custom_sort_file))
-            sort_by_frequency_button.pack(side=tk.RIGHT)
-
-            save_button = tk.Button(custom_sort_window, text="Save", command=lambda: self.save_custom_sort(custom_sort_file, custom_sort_text))
-            save_button.pack(side=tk.LEFT)
-
-            custom_sort_text.configure(bg=bg_color, fg=fg_color)
-            sort_by_frequency_button.configure(bg=bg_color, fg=fg_color)
-            save_button.configure(bg=bg_color, fg=fg_color)
-
-    def load_all_tags(self):
-        all_tags = set()
-        for txt_filename in os.listdir(self.source_directory):
-            if txt_filename.lower().endswith('.txt') and txt_filename != "custom_tag_sort.txt":
-                txt_path = os.path.join(self.source_directory, txt_filename)
-                with open(txt_path, 'r') as txt_file:
-                    tags = txt_file.read().split(',')
-                    for tag in tags:
-                        clean_tag = self.clean_tag(tag)
-                        if clean_tag:
-                            all_tags.add(clean_tag)
-        return sorted(all_tags)
-
-    def sort_by_frequency(self, custom_sort_text, custom_sort_file):
-        all_tags = self.load_all_tags()
-        tag_counts = {}
-        for tag in all_tags:
-            tag_counts[tag] = 0
-
-        for txt_filename in os.listdir(self.source_directory):
-            if txt_filename.lower().endswith('.txt') and txt_filename != "custom_tag_sort.txt":
-                txt_path = os.path.join(self.source_directory, txt_filename)
-                with open(txt_path, 'r') as txt_file:
-                    tags = txt_file.read().split(',')
-                    for tag in tags:
-                        clean_tag = self.clean_tag(tag)
-                        if clean_tag:
-                            tag_counts[clean_tag] += 1
-
-        sorted_tags = sorted(all_tags, key=lambda x: tag_counts[x], reverse=True)
-        custom_sort_text.delete(1.0, tk.END)
-        custom_sort_text.insert(tk.END, ", ".join(sorted_tags))
-
-    def save_custom_sort(self, custom_sort_file, custom_sort_text):
-        custom_sort_content = custom_sort_text.get(1.0, tk.END)
-        with open(custom_sort_file, 'w') as custom_sort_file:
-            custom_sort_file.write(custom_sort_content)
-
-    def sort_custom_tags(self):
-        custom_sort_file_path = os.path.join(self.source_directory, "custom_tag_sort.txt")
-
-        if os.path.exists(custom_sort_file_path):
-            with open(custom_sort_file_path, 'r') as custom_sort_file:
-                custom_sort_content = custom_sort_file.read()
-
-            custom_sorted_tags = [tag.strip() for tag in custom_sort_content.split(',')]
-
-            new_cells = []
-
-            for tag in custom_sorted_tags:
-                matching_cells = [cell for cell in self.cells if cell.text.lower() == tag.lower()]
-                if matching_cells:
-                    cell = matching_cells[0]
-                    new_cells.append(cell)
-                    self.cells.remove(cell)
-
-            new_cells.extend(self.cells)
-
-            self.cells = new_cells
-
-            for index, cell in enumerate(self.cells):
-                pass
-            self.rearrange_cells()
-
+        with open(self.text_file_path, 'w') as file:
+            file.write(tags_to_save)
+        #messagebox.showinfo("Saved", "Text data saved successfully.")
+    def add_undo_img_tags_history(self, old_list):
+        # Convert the current state of the Listbox to a tuple or list to store in history
+        current_state = list(old_list.get(0, tk.END))
+        # Append the current state to the undo history
+        self.undo_img_tags_history.append(current_state)
+        # Ensure only the last 10 states are kept
+        if len(self.undo_img_tags_history) > 10:
+            self.undo_img_tags_history.pop(0)
+    def recall_undo_img_tags_history(self):
+        return self.undo_img_tags_history.pop()
 if __name__ == "__main__":
     root = tk.Tk()
-    root.geometry("900x600")
-    app = ImageTextViewer(root)
+    app = ImageViewer(root, config)
     root.mainloop()
