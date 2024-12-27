@@ -21,10 +21,11 @@ class ImageViewer:
     def __init__(self, root, config):
         self.root = root
         self.config = config
-        self.root.title("Ski Dataprep v4")
 
-        self.version = "4.0.2"
+        self.version = "4.0.3"
         self.last_update = "20241227"
+
+        self.root.title(f"Ski Dataprep v{self.version}")
         
         # Variables
         self.image_list = []
@@ -54,7 +55,7 @@ class ImageViewer:
         self.frame_image.pack(side=tk.LEFT, padx=0, pady=0)
         self.frame_btn_image = tk.Frame(self.frame_image)
         self.frame_btn_image.pack(side=tk.TOP, pady=0, expand=True)
-        self.btn_convert = tk.Button(self.frame_btn_image, text="Convert To PNG", command=self.click_convert_image)
+        self.btn_convert = tk.Button(self.frame_btn_image, text=f"Convert to [{self.config['convert_image_type']}]", command=self.click_convert_image)
         self.btn_convert.pack(side=tk.LEFT, padx=0)
         self.btn_shrink = tk.Button(self.frame_btn_image, text="Shrink Image", command=self.click_shrink_image)
         self.btn_shrink.pack(side=tk.LEFT, padx=0)
@@ -178,19 +179,22 @@ class ImageViewer:
     def round_to_nearest_64(self, value):
         return (value + 32) // 64 * 64
     def click_convert_image(self):
-        print("WARNING: Manually setting file type(PNG).")
-        self.convert_image(self.image_list[self.current_image_index], "png")
+        self.convert_image(self.image_list[self.current_image_index], self.config['convert_image_type'])
     def convert_image(self, output_path, file_type_out="png", delete_old=False, input_path=None):
         img_path = output_path
         if input_path:
             img_path = input_path
-        with Image.open(img_path) as img:
-            file_type_in = os.path.splitext(output_path)[1]
-            output_path_png = os.path.splitext(output_path)[0] + '.' + file_type_out
-            img.save(output_path_png, file_type_out)
-            print(f"Converted and resized {img_path} from {file_type_in} to {file_type_out}")
-            if self.config['convert_image_delete_input_img']:
-                self.delete_file(input_path)
+        file_type_in = os.path.splitext(output_path)[1]
+
+        if file_type_in != file_type_out:
+            with Image.open(img_path) as img:
+                output_path_filetype = os.path.splitext(output_path)[0] + '.' + file_type_out
+                img.save(output_path_filetype, file_type_out)
+                print(f"Converted and resized {img_path} from {file_type_in} to {file_type_out}")
+                if self.config['convert_image_delete_input_img']:
+                    self.delete_file(input_path)
+        else:
+            print(f"INFO: No changes, {img_path} filetype is already {file_type_in} filetype.")
     def get_new_resolution(self, max_dimension, original_width, original_height):
         reduced_width = original_width
         reduced_height = original_height
@@ -210,9 +214,7 @@ class ImageViewer:
 
         return (new_width, new_height)
     def click_shrink_image(self):
-        #print("Current Image:", self.image_list[self.current_image_index])
-        print("WARNING: Manually setting resolution max.")
-        self.shrink_image(self.image_list[self.current_image_index], 1536)
+        self.shrink_image(self.image_list[self.current_image_index], self.config['resize_image_limit'])
     def shrink_image(self, output_path, resize=1536, input_path=None):
         img_path = output_path
         if input_path:
@@ -228,7 +230,7 @@ class ImageViewer:
                 resized_img.save(output_path)
                 print(f"Resized {img_path} from {original_width}x{original_height} to {new_width}x{new_height}")
             else:
-                print(f"No resizing needed for {img_path}: already at {original_width}x{original_height}")
+                print(f"INFO: No changes, {img_path}: already at {original_width}x{original_height}")
             if self.config['resize_image_delete_input_img']:
                 if input_path != output_path:
                     self.delete_file(input_path)
@@ -295,8 +297,7 @@ class ImageViewer:
         # Display the resolution of the original image
         original_width, original_height = image.size
         self.label_resolution.config(text=f"{original_width}x{original_height}")
-        print("WARNING: Manually setting resolution max.")
-        (new_width, new_height) = self.get_new_resolution(1536, original_width, original_height)
+        (new_width, new_height) = self.get_new_resolution(self.config['resize_image_limit'], original_width, original_height)
         self.label_resolution_new.config(text=f"{new_width}x{new_height}")
 
         max_size = (self.config['displayed_image_maxsize'], self.config['displayed_image_maxsize'])
