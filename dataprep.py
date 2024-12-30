@@ -6,24 +6,29 @@ import natsort
 import os
 
 config = {
-    'input_dir': None,
-    'output_dir': "./",
-    'resize_image_limit': 1536,
-    'resize_image_delete_input_img': False,
-    'convert_image_type': "png",
-    'convert_image_delete_input_img': False,
-    'delete_moves_to_temp': True,
-    'displayed_image_maxsize': 512,
-    'initial_dir': "./",
-    'valid_img_types': ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+    'input_dir': None,                          # Not implemented. Do not modify, probably might break things.
+    'output_dir': "./",                         # Unused.
+    'initial_dir': "./",                        # The starting folder the first time you open the app
+    'resize_image_limit': 1536,                 # The max Resize of the resize image button
+    'resize_image_delete_input_img': False,     # Not recommended to change right now.
+    'convert_image_type': "png",                # The file type to save the image as.
+    'convert_image_delete_input_img': False,    # Not recommended to change right now.
+    'delete_moves_to_temp': True,               # Not recommended to change right now.
+    'displayed_image_maxsize': 512,             # The thumbnail size of the image displated
+    'valid_img_types': ('.png', '.jpg', '.jpeg', '.gif', '.webp'),      # File types to consider as images.
+    'tag_highlights': [],                       # Tags to always highlight(blue)
+    'tag_highlights_last_added': [],            # Highlight the last tag(s) added(green), replaced with user action automatically
+    'tag_highlights_last_removed': [],          # Highlight the last tag(s) removed(red), replaced with user action automatically
+    'tag_highlights_most_common': {},           # Highlights the highest(cyan)/lowest(orange) add/removed <cnt> of tages
+    'tag_highlights_most_common_cnt': 5         # The number of highest and lowest tags to display(5 of the most added, and 5 of the most removed)
 }
 class ImageViewer:
     def __init__(self, root, config):
         self.root = root
         self.config = config
 
-        self.version = "4.0.3"
-        self.last_update = "20241227"
+        self.version = "4.0.4"
+        self.last_update = "20241229"
 
         self.root.title(f"Ski Dataprep v{self.version}")
         
@@ -297,8 +302,16 @@ class ImageViewer:
         # Display the resolution of the original image
         original_width, original_height = image.size
         self.label_resolution.config(text=f"{original_width}x{original_height}")
+        
         (new_width, new_height) = self.get_new_resolution(self.config['resize_image_limit'], original_width, original_height)
         self.label_resolution_new.config(text=f"{new_width}x{new_height}")
+
+        if f"{original_width}x{original_height}" == f"{new_width}x{new_height}":
+            self.label_resolution.config(fg='green')
+            self.label_resolution_new.config(fg='green')
+        else:
+            self.label_resolution.config(fg='red')
+            self.label_resolution_new.config(fg='red')
 
         max_size = (self.config['displayed_image_maxsize'], self.config['displayed_image_maxsize'])
         image.thumbnail(max_size, Image.LANCZOS)  # Scale down while maintaining aspect ratio
@@ -321,6 +334,46 @@ class ImageViewer:
         self.img_tag_listbox.delete(0, tk.END)
         for item in self.text_data:
             self.img_tag_listbox.insert(tk.END, item)
+        self.highlight_tags()
+    def highlight_tags(self):
+        common_cnt_added = 0
+        common_cnt_remove = 0
+        max_highlight_common = self.config['tag_highlights_most_common_cnt']
+        for idx in range(self.img_tag_listbox.size()):
+            changed = False
+            common_add_list = list(dict(sorted(self.config['tag_highlights_most_common'].items(), key=lambda item: item[1], reverse=True)).keys())
+            common_remove_list = list(dict(sorted(self.config['tag_highlights_most_common'].items(), key=lambda item: item[1], reverse=False)).keys())
+
+            tag = self.img_tag_listbox.get(idx)
+            if tag in self.config['tag_highlights'] and not changed:
+                self.img_tag_listbox.itemconfig(idx, fg='blue')
+                changed = True
+            if tag in self.config['tag_highlights_last_added'] and not changed:
+                self.img_tag_listbox.itemconfig(idx, fg='green')
+                changed = True
+            if tag in self.config['tag_highlights_last_removed'] and not changed:
+                self.img_tag_listbox.itemconfig(idx, fg='red')
+                changed = True
+            if tag in common_add_list and not changed and common_cnt_added < max_highlight_common:
+                # print('common_add_list:',common_add_list)
+                if self.config['tag_highlights_most_common'][tag] > 0:
+                    for item_add in common_add_list:
+                        if item_add not in self.config['tag_highlights'] and item_add not in self.config['tag_highlights_last_added'] and item_add not in self.config['tag_highlights_last_removed']:
+                            self.img_tag_listbox.itemconfig(idx, fg='cyan')
+                            changed = True
+                            common_cnt_added += 1
+                            break
+            if tag in common_remove_list and not changed and common_cnt_added < max_highlight_common:
+                # print('common_remove_list:',common_remove_list)
+                if self.config['tag_highlights_most_common'][tag] < 0:
+                    for item_remove in common_remove_list:
+                        if item_remove not in self.config['tag_highlights'] and item_remove not in self.config['tag_highlights_last_added'] and item_remove not in self.config['tag_highlights_last_removed']:
+                            self.img_tag_listbox.itemconfig(idx, fg='orange')
+                            changed = True
+                            common_cnt_remove += 1
+                            break
+            if not changed:
+                self.img_tag_listbox.itemconfig(idx, fg='black')
     def show_previous(self):
         if self.current_image_index > 0:
             self.current_image_index -= 1
@@ -353,16 +406,29 @@ class ImageViewer:
                 self.text_data.append(new_item)
                 self.img_tag_listbox.insert(tk.END, new_item)
                 added_items.append(new_item)
-        #self.entry_new_item.delete(0, tk.END)
-        self.add_undo_img_tags_history(self.img_tag_listbox)
-        self.update_global_tags()  # Update global tags after adding items
+                if new_item in self.config['tag_highlights_most_common']:
+                    self.config['tag_highlights_most_common'][new_item] += 1
+                else:
+                    self.config['tag_highlights_most_common'][new_item] = 1
+        self.config['tag_highlights_last_added'] = added_items
+        #self.add_undo_img_tags_history(self.img_tag_listbox)
+        self.update_global_tags()
+        self.highlight_tags()
     def remove_selected_items(self):
         selected_indices = sorted(self.img_tag_listbox.curselection(), reverse=True)
+        removed_items = []
         for index in selected_indices:
+            removed_items.append(self.text_data[index])
+            if self.text_data[index] in self.config['tag_highlights_most_common']:
+                self.config['tag_highlights_most_common'][self.text_data[index]] -= 1
+            else:
+                self.config['tag_highlights_most_common'][self.text_data[index]] = -1
             del self.text_data[index]
             self.img_tag_listbox.delete(index)
-        self.add_undo_img_tags_history(self.img_tag_listbox)
-        self.update_global_tags()  # Update global tags after removing items
+        self.config['tag_highlights_last_removed'] = removed_items
+        #self.add_undo_img_tags_history(self.img_tag_listbox)
+        self.update_global_tags()
+        self.highlight_tags()
     def update_global_tags(self):
         # Clear the global tags dictionary
         self.global_tags.clear()
