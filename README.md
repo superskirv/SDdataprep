@@ -1,7 +1,7 @@
 # SDdataprep
 <hr>
 About:<br>
-Complete redesign. I plan to add the tiles back at some point, as well as adding other featues I injoyed. However until then please make do with this limited format.<br>
+Complete redesign. I plan to add the tiles back at some point, as well as adding other featues I enjoyed. However until then please make do with this limited format.<br>
 
 <br>This is designed to help you create/modify/sort tags for stable diffusion training. This does not create the initial datasets. This simply looks into a specified folder and pulls up the images and text files of the same name. It also looks into all text files in the folder and generates a list of tags sorted based on frequency. You can add multiple tags at once, it will automatically separate them based on the commas. It will also checks for duplicate tags before adding them, though if there is a small difference in wording it will miss it. If the text file does not exist you can create it when you click save.<br>
 
